@@ -6,14 +6,7 @@
 ![Docker](https://img.shields.io/badge/docker-ready-2496ED?style=plastic&logo=docker&logoColor=white)
 
 ![CI](https://img.shields.io/github/actions/workflow/status/rAthenaFR/rAthenaFR-BotDiscord/ci.yml?branch=master&label=ci&style=plastic&logo=githubactions&logoColor=white)
-![Rust check](https://img.shields.io/github/actions/workflow/status/rAthenaFR/rAthenaFR-BotDiscord/ci.yml?branch=master&label=rust%20check&style=plastic&logo=rust&logoColor=white)
 ![Docker build](https://img.shields.io/github/actions/workflow/status/rAthenaFR/rAthenaFR-BotDiscord/docker.yml?branch=master&label=docker%20build&style=plastic&logo=docker&logoColor=white)
-
-![last commit](https://img.shields.io/github/last-commit/rAthenaFR/rAthenaFR-BotDiscord/master?style=plastic&logo=github&logoColor=white)
-[![issues](https://img.shields.io/github/issues/rAthenaFR/rAthenaFR-BotDiscord?label=issues&style=plastic&logo=github&logoColor=white)](https://github.com/rAthenaFR/rAthenaFR-BotDiscord/issues)
-[![pull requests](https://img.shields.io/github/issues-pr/rAthenaFR/rAthenaFR-BotDiscord?style=plastic&logo=github&logoColor=white)](https://github.com/rAthenaFR/rAthenaFR-BotDiscord/pulls)
-![code size](https://img.shields.io/github/languages/code-size/rAthenaFR/rAthenaFR-BotDiscord?style=plastic&logo=github&logoColor=white)
-![license](https://img.shields.io/badge/license-GPL--3.0--only-A42E2B?style=plastic&logo=gnu&logoColor=white)
 
 Bot Discord en Rust pour les communautés Ragnarok Online utilisant une base de données compatible rAthena.
 
