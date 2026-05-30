@@ -1489,6 +1489,7 @@ impl RAthenaFrDatabase {
         password: &str,
         password_mode: AccountPasswordMode,
         sex: &str,
+        birthdate: &str,
         email: &str,
     ) -> Result<CreatedAccount> {
         if self.account_userid_exists(userid).await? {
@@ -1498,14 +1499,14 @@ impl RAthenaFrDatabase {
         let sql = match password_mode {
             AccountPasswordMode::Plain => {
                 r#"
-                INSERT INTO `login` (userid, user_pass, sex, email)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO `login` (userid, user_pass, sex, birthdate, email)
+                VALUES (?, ?, ?, ?, ?)
                 "#
             }
             AccountPasswordMode::Md5 => {
                 r#"
-                INSERT INTO `login` (userid, user_pass, sex, email)
-                VALUES (?, MD5(?), ?, ?)
+                INSERT INTO `login` (userid, user_pass, sex, birthdate, email)
+                VALUES (?, MD5(?), ?, ?, ?)
                 "#
             }
         };
@@ -1514,6 +1515,7 @@ impl RAthenaFrDatabase {
             .bind(userid)
             .bind(password)
             .bind(sex)
+            .bind(birthdate)
             .bind(email)
             .execute(&self.pool)
             .await

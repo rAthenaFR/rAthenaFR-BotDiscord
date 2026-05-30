@@ -12,7 +12,7 @@ Documentation française de rAthenaFR Discord Bot pour le projet rAthena.
 | `/player name:` | Profil d’un personnage. |
 | `/guilds` | Classement des guildes. |
 | `/search query:` | Recherche partielle de personnages, objets et monstres. |
-| `/createaccount username: password: sex: email:` | Création de compte si activée. |
+| `/createaccount username: password: sex: birthdate: email:` | Création de compte si activée. |
 | `/topzeny` | Classement zeny. |
 | `/guild name:` | Détail d’une guilde. |
 | `/guildmembers name:` | Membres d’une guilde. |
@@ -53,7 +53,7 @@ Ces commandes exigent un rôle présent dans `RATHENAFR_STAFF_ROLE_IDS`, `RATHEN
 | `/itemcount` | Comptage global d’un objet. |
 | `/itemowners` | Propriétaires visibles d’un objet. |
 | `/accountoverview` | Résumé sûr d’un compte. |
-| `/accountmanage` | Gestion owner d’un compte. |
+| `/accountmanage` | Gestion d’un compte. |
 | `/banlist` | Comptes bloqués ou bannis. |
 | `/accountchars` | Personnages d’un compte. |
 | `/accountstatus` | Statut sûr d’un compte. |
