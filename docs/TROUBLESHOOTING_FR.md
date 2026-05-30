@@ -1,6 +1,6 @@
 # Dépannage
 
-Documentation française de rAthenaFR Discord Bot pour le projet Athena.
+Documentation française de rAthenaFR Discord Bot pour le projet rAthena.
 
 ## Le bot ne démarre pas
 
@@ -40,6 +40,8 @@ docker network inspect athena-network
 ```
 
 Le conteneur MariaDB et le bot doivent partager `athena-network`.
+
+Si l’erreur contient `failed to lookup address information`, le nom configuré dans `RATHENAFR_DB_HOST`, `RATHENAFR_LOGIN_HOST`, `RATHENAFR_CHAR_HOST` ou `RATHENAFR_MAP_HOST` n’est pas résolu depuis le conteneur du bot. Utilise un nom de service Docker présent sur le même réseau ou une adresse réseau joignable.
 
 ## Les commandes Discord ne changent pas
 

@@ -1,6 +1,6 @@
 # Migration des variables d’environnement
 
-Documentation française de rAthenaFR Discord Bot pour le projet Athena.
+Documentation française de rAthenaFR Discord Bot pour le projet rAthena.
 
 ## Nouveau préfixe
 
@@ -28,3 +28,5 @@ RATHENAFR_STAFF_ROLE_IDS=
 - secrets de déploiement
 
 Après migration, redéploie les commandes Discord si les descriptions ont changé.
+
+Les anciens alias `DISCORD_STAFF_ROLE_IDS`, `DISCORD_ADMIN_ROLE_IDS` et `DISCORD_OWNER_ROLE_IDS` restent acceptés, mais les variables `RATHENAFR_*` sont les noms recommandés.

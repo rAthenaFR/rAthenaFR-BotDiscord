@@ -1,6 +1,6 @@
 # Installation
 
-Documentation française de rAthenaFR Discord Bot pour le projet Athena.
+Documentation française de rAthenaFR Discord Bot pour le projet rAthena.
 
 ## Prérequis
 
@@ -48,3 +48,13 @@ docker compose up -d --build
 ```
 
 Le service attend le réseau Docker externe `athena-network`.
+
+## Mise en ligne
+
+Pour un VPS, un serveur dédié ou une machine distante, utilise la procédure dédiée :
+
+```text
+docs/DEPLOYMENT_FR.md
+```
+
+Le principe recommandé reste Docker, avec une base MariaDB/MySQL joignable par réseau privé ou réseau Docker, jamais exposée publiquement.

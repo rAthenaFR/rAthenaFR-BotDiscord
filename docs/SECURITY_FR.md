@@ -1,6 +1,6 @@
 # Sécurité
 
-Documentation française de rAthenaFR Discord Bot pour le projet Athena.
+Documentation française de rAthenaFR Discord Bot pour le projet rAthena.
 
 ## Principes
 
@@ -34,4 +34,13 @@ Laisse vide pour refuser les commandes staff.
 
 ## Backups
 
-Sauvegarde régulièrement la base Athena, mais ne stocke pas les backups dans le dépôt du bot.
+Sauvegarde régulièrement la base rAthena, mais ne stocke pas les backups dans le dépôt du bot.
+
+## Mise en ligne
+
+- Active le secret scanning et la push protection sur GitHub.
+- Active le private vulnerability reporting si le dépôt public appartient à une organisation.
+- Garde `.env` uniquement sur le serveur.
+- Protège `.env` avec des permissions restrictives, par exemple `chmod 600 .env`.
+- N’expose pas MariaDB/MySQL publiquement.
+- Fais communiquer le bot avec la base via réseau Docker, réseau privé, VPN ou tunnel privé.

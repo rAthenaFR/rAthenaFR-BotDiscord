@@ -1,6 +1,6 @@
 # Architecture
 
-Documentation française de rAthenaFR Discord Bot pour le projet Athena.
+Documentation française de rAthenaFR Discord Bot pour le projet rAthena.
 
 ## Structure principale
 

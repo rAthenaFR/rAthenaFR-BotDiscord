@@ -1,6 +1,6 @@
 # Développement
 
-Documentation française de rAthenaFR Discord Bot pour le projet Athena.
+Documentation française de rAthenaFR Discord Bot pour le projet rAthena.
 
 ## Préparer l’environnement
 
@@ -41,5 +41,5 @@ cargo run -- --deploy
 - Ne pas ajouter de requêtes d’écriture SQL.
 - Ne pas afficher de données sensibles.
 - Garder les textes visibles en français.
-- Garder le nom visible `rAthenaFR`.
+- Garder `rAthena` dans l’affichage des commandes et `Bot Discord rAthenaFR` dans le footer par défaut.
 - Utiliser les variables `RATHENAFR_*`.

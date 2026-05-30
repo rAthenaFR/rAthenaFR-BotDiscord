@@ -1,6 +1,6 @@
 # Commandes Discord
 
-Documentation française de rAthenaFR Discord Bot pour le projet Athena.
+Documentation française de rAthenaFR Discord Bot pour le projet rAthena.
 
 ## Commandes publiques
 
@@ -58,4 +58,10 @@ Après tout changement de nom, description ou option :
 
 ```bash
 cargo run -- --deploy
+```
+
+Avec Docker :
+
+```bash
+docker compose run --rm rathenafr-discord-bot --deploy
 ```

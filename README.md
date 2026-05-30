@@ -37,6 +37,7 @@ rAthenaFR Discord Bot est un compagnon Discord pour le projet rAthena. Il ne rem
 | `/top` | Classement par niveau. |
 | `/topzeny` | Classement zeny. |
 | `/player` | Profil d’un personnage. |
+| `/search` | Recherche partielle de personnages. |
 | `/guilds` | Classement des guildes. |
 | `/guild` | Détail d’une guilde. |
 | `/guildmembers` | Membres d’une guilde. |
@@ -47,8 +48,14 @@ rAthenaFR Discord Bot est un compagnon Discord pour le projet rAthena. Il ne rem
 | `/partymembers` | Membres d’un groupe. |
 | `/homunculus` | Homoncule d’un personnage. |
 | `/pet` | Familier d’un personnage. |
+| `/zeny` | Statistiques zeny visibles. |
 | `/castles` | Liste des châteaux. |
 | `/castle` | Détail d’un château. |
+| `/guildalliances` | Alliances et oppositions d’une guilde. |
+| `/guildskills` | Compétences d’une guilde. |
+| `/homunculustop` | Classement des homoncules. |
+| `/pettop` | Classement des familiers. |
+| `/queststats` | Statistiques d’une quête. |
 | `/whosell` | Boutiques vendant un objet. |
 | `/whobuy` | Boutiques achetant un objet. |
 | `/market` | Vue achat/vente d’un objet. |
@@ -63,6 +70,7 @@ Commandes staff : `/charquests`, `/charequipment`, `/charinventory`, `/itemcount
 |---|---|
 | [`docs/CONTRIBUTOR_GUIDE_FR.md`](docs/CONTRIBUTOR_GUIDE_FR.md) | Cartographie des contributeurs, flux de projet et processus de gestion des changements sécurisés.|
 | [`docs/INSTALLATION_FR.md`](docs/INSTALLATION_FR.md) | Installation et première configuration. |
+| [`docs/DEPLOYMENT_FR.md`](docs/DEPLOYMENT_FR.md) | Mise en ligne sur serveur distant ou VPS. |
 | [`docs/CONFIGURATION_FR.md`](docs/CONFIGURATION_FR.md) | Variables d'environnement et configuration d'exécution. |
 | [`docs/COMMANDS_FR.md`](docs/COMMANDS_FR.md) | Référence complète des commandes. |
 | [`docs/DATABASE_FR.md`](docs/DATABASE_FR.md) | Tables de base de données et étendue des requêtes. |
@@ -71,6 +79,8 @@ Commandes staff : `/charquests`, `/charequipment`, `/charinventory`, `/itemcount
 | [`docs/TROUBLESHOOTING_FR.md`](docs/TROUBLESHOOTING_FR.md) | Problèmes courants et correctifs. |
 | [`docs/DEVELOPMENT_FR.md`](docs/DEVELOPMENT_FR.md) | Flux de travail de développement. |
 | [`docs/ARCHITECTURE_FR.md`](docs/ARCHITECTURE_FR.md) | Architecture interne. |
+| [`docs/ENV_MIGRATION_FR.md`](docs/ENV_MIGRATION_FR.md) | Migration des anciennes variables d’environnement. |
+| [`docs/WINDOWS_APP_CONTROL_FR.md`](docs/WINDOWS_APP_CONTROL_FR.md) | Contournement Windows App Control pour le build local. |
 | [`docs/RELEASE_FR.md`](docs/RELEASE_FR.md) | processus de libération. |
 
 ## Licence
