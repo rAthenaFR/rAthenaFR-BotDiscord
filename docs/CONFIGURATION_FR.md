@@ -26,6 +26,19 @@ Les valeurs sont des IDs de rôles Discord séparés par des virgules. Laisse vi
 
 Les anciens alias `DISCORD_STAFF_ROLE_IDS`, `DISCORD_ADMIN_ROLE_IDS` et `DISCORD_OWNER_ROLE_IDS` restent acceptés si les variables `RATHENAFR_*` correspondantes sont absentes.
 
+## Création de compte
+
+```env
+RATHENAFR_ACCOUNT_CREATION_ENABLED=false
+RATHENAFR_ACCOUNT_PASSWORD_MODE=plain
+```
+
+La commande `/createaccount` est déclarée dans Discord, mais elle refuse la création tant que cette variable n’est pas à `true`.
+
+`RATHENAFR_ACCOUNT_PASSWORD_MODE` accepte `plain` ou `md5`. Sa valeur doit correspondre à la configuration du serveur login rAthena.
+
+Cette fonctionnalité écrit dans la table `login`. Elle nécessite donc les permissions SQL optionnelles décrites dans `docs/DATABASE_FR.md`.
+
 ## Nom visible
 
 ```env

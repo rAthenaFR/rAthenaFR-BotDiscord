@@ -8,7 +8,7 @@ rAthenaFR Discord Bot lit une base compatible rAthena et affiche des information
 
 ## Règles obligatoires
 
-- SQL en lecture seule.
+- SQL en lecture seule, sauf commandes de compte explicitement documentées.
 - Pas d’affichage de secrets ou données sensibles.
 - Commandes staff protégées par rôle.
 - Documentation française à jour.

@@ -9,6 +9,7 @@ pub struct AppConfig {
     pub services: ServicesConfig,
     pub display: DisplayConfig,
     pub cache: CacheConfig,
+    pub account_commands: AccountCommandsConfig,
 }
 
 #[derive(Debug, Clone)]
@@ -61,6 +62,18 @@ pub struct CacheConfig {
     pub ttl_seconds: Option<u64>,
 }
 
+#[derive(Debug, Clone)]
+pub struct AccountCommandsConfig {
+    pub creation_enabled: bool,
+    pub password_mode: AccountPasswordMode,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum AccountPasswordMode {
+    Plain,
+    Md5,
+}
+
 impl AppConfig {
     pub fn from_env_for_deploy() -> Result<Self> {
         Ok(Self {
@@ -69,6 +82,7 @@ impl AppConfig {
             services: ServicesConfig::from_env()?,
             display: DisplayConfig::from_env()?,
             cache: CacheConfig::from_env()?,
+            account_commands: AccountCommandsConfig::from_env()?,
         })
     }
 
@@ -79,6 +93,7 @@ impl AppConfig {
             services: ServicesConfig::from_env()?,
             display: DisplayConfig::from_env()?,
             cache: CacheConfig::from_env()?,
+            account_commands: AccountCommandsConfig::from_env()?,
         })
     }
 }
@@ -249,6 +264,43 @@ impl CacheConfig {
         } else {
             Some(Duration::from_secs(seconds))
         }
+    }
+}
+
+impl AccountCommandsConfig {
+    fn from_env() -> Result<Self> {
+        Self::from_lookup(&optional)
+    }
+
+    fn from_lookup<F>(lookup: &F) -> Result<Self>
+    where
+        F: Fn(&str) -> Option<String>,
+    {
+        Ok(Self {
+            creation_enabled: parse_bool_optional_from(
+                lookup,
+                "RATHENAFR_ACCOUNT_CREATION_ENABLED",
+            )?
+            .unwrap_or(false),
+            password_mode: parse_account_password_mode(lookup)?,
+        })
+    }
+}
+
+fn parse_account_password_mode<F>(lookup: &F) -> Result<AccountPasswordMode>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    let Some(value) = lookup_value(lookup, "RATHENAFR_ACCOUNT_PASSWORD_MODE") else {
+        return Ok(AccountPasswordMode::Plain);
+    };
+
+    match value.to_ascii_lowercase().as_str() {
+        "plain" => Ok(AccountPasswordMode::Plain),
+        "md5" => Ok(AccountPasswordMode::Md5),
+        _ => Err(anyhow!(
+            "Valeur invalide pour la variable d’environnement : RATHENAFR_ACCOUNT_PASSWORD_MODE. Valeurs attendues : plain ou md5."
+        )),
     }
 }
 
@@ -452,5 +504,35 @@ mod tests {
             .expect("cache config");
 
         assert_eq!(config.duration(10), None);
+    }
+
+    #[test]
+    fn account_creation_is_disabled_by_default() {
+        let config = AccountCommandsConfig::from_lookup(&lookup(&[])).expect("account config");
+
+        assert!(!config.creation_enabled);
+        assert_eq!(config.password_mode, AccountPasswordMode::Plain);
+    }
+
+    #[test]
+    fn account_creation_can_be_enabled() {
+        let config = AccountCommandsConfig::from_lookup(&lookup(&[(
+            "RATHENAFR_ACCOUNT_CREATION_ENABLED",
+            "true",
+        )]))
+        .expect("account config");
+
+        assert!(config.creation_enabled);
+    }
+
+    #[test]
+    fn account_password_mode_can_use_md5() {
+        let config = AccountCommandsConfig::from_lookup(&lookup(&[(
+            "RATHENAFR_ACCOUNT_PASSWORD_MODE",
+            "md5",
+        )]))
+        .expect("account config");
+
+        assert_eq!(config.password_mode, AccountPasswordMode::Md5);
     }
 }

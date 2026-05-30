@@ -70,3 +70,25 @@ RATHENAFR_OWNER_ROLE_IDS=
 ## Table manquante
 
 Le schéma rAthena est probablement incomplet ou personnalisé. Vérifie que les fichiers SQL rAthena ont bien été importés dans la base ciblée.
+
+## `/createaccount` refuse la création
+
+Vérifie :
+
+```env
+RATHENAFR_ACCOUNT_CREATION_ENABLED=true
+```
+
+Puis vérifie que l’utilisateur SQL possède `INSERT` sur la table `login`.
+
+## `/accountmanage` refuse la suppression
+
+La commande exige un rôle présent dans `RATHENAFR_OWNER_ROLE_IDS`.
+
+Pour supprimer un compte, la confirmation doit être exactement :
+
+```text
+DELETE-ID
+```
+
+La suppression est bloquée si le compte possède encore un personnage ou du stockage.

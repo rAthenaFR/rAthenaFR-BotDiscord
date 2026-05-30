@@ -20,8 +20,9 @@ rAthenaFR Discord Bot est un compagnon Discord pour le projet rAthena. Il ne rem
 
 ## Principes
 
-- accès SQL en lecture seule ;
-- aucune modification de compte, personnage, objet ou guilde ;
+- accès SQL en lecture seule par défaut ;
+- aucune modification de personnage, objet ou guilde ;
+- création/suppression de compte uniquement si les commandes dédiées sont activées ;
 - commandes staff protégées par rôles Discord ;
 - réponses staff éphémères quand Discord le permet ;
 - configuration via `.env` ;

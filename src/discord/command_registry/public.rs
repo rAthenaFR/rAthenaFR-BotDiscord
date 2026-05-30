@@ -12,6 +12,7 @@ pub(super) fn command_definitions() -> Vec<CreateCommand> {
         player_command(),
         guilds_command(),
         search_command(),
+        createaccount_command(),
         topzeny_command(),
         guild_command(),
         guildmembers_command(),
@@ -69,16 +70,49 @@ fn guilds_command() -> CreateCommand {
 
 fn search_command() -> CreateCommand {
     CreateCommand::new("search")
-        .description("Recherche les personnages visibles par nom partiel dans la base de données.")
+        .description("Recherche personnages, objets et monstres par nom partiel ou ID.")
         .add_option(
             CreateCommandOption::new(
                 CommandOptionType::String,
                 "query",
-                "Nom partiel du personnage.",
+                "Nom partiel ou ID à rechercher.",
             )
             .required(true),
         )
         .add_option(limit_option())
+}
+
+fn createaccount_command() -> CreateCommand {
+    CreateCommand::new("createaccount")
+        .description("Crée un compte rAthena si la création publique est activée.")
+        .add_option(
+            CreateCommandOption::new(
+                CommandOptionType::String,
+                "username",
+                "Nom du compte à créer.",
+            )
+            .required(true),
+        )
+        .add_option(
+            CreateCommandOption::new(
+                CommandOptionType::String,
+                "password",
+                "Mot de passe du compte.",
+            )
+            .required(true),
+        )
+        .add_option(
+            CreateCommandOption::new(CommandOptionType::String, "sex", "Sexe du compte : M ou F.")
+                .required(true),
+        )
+        .add_option(
+            CreateCommandOption::new(
+                CommandOptionType::String,
+                "email",
+                "Email optionnel du compte.",
+            )
+            .required(false),
+        )
 }
 
 fn topzeny_command() -> CreateCommand {

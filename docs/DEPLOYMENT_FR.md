@@ -54,6 +54,17 @@ RATHENAFR_ADMIN_ROLE_IDS=
 RATHENAFR_OWNER_ROLE_IDS=
 ```
 
+La création publique de compte reste désactivée tant que tu ne définis pas :
+
+```env
+RATHENAFR_ACCOUNT_CREATION_ENABLED=true
+RATHENAFR_ACCOUNT_PASSWORD_MODE=plain
+```
+
+Cette option nécessite des droits SQL supplémentaires sur `login`. Ne l’active pas avec l’utilisateur SQL strictement lecture seule.
+
+Utilise `RATHENAFR_ACCOUNT_PASSWORD_MODE=md5` uniquement si ton serveur login rAthena attend des mots de passe MD5 dans `login.user_pass`.
+
 ## Configurer la base distante
 
 Si la base est dans Docker sur le même hôte, utilise le nom du conteneur ou du service :

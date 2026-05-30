@@ -1,5 +1,5 @@
 use super::options::{account_id_option, character_lookup_option, item_id_option, limit_option};
-use serenity::all::CreateCommand;
+use serenity::all::{CommandOptionType, CreateCommand, CreateCommandOption};
 
 pub(super) fn command_definitions() -> Vec<CreateCommand> {
     vec![
@@ -9,6 +9,7 @@ pub(super) fn command_definitions() -> Vec<CreateCommand> {
         itemcount_command(),
         itemowners_command(),
         accountoverview_command(),
+        accountmanage_command(),
         banlist_command(),
         accountchars_command(),
         accountstatus_command(),
@@ -62,6 +63,28 @@ fn accountoverview_command() -> CreateCommand {
         .description("Staff uniquement : affiche un résumé sûr et compact d’un compte.")
         .add_option(account_id_option())
         .add_option(limit_option())
+}
+
+fn accountmanage_command() -> CreateCommand {
+    CreateCommand::new("accountmanage")
+        .description("Owner uniquement : gère un compte utilisateur rAthena.")
+        .add_option(account_id_option())
+        .add_option(
+            CreateCommandOption::new(
+                CommandOptionType::String,
+                "action",
+                "Action à effectuer : delete.",
+            )
+            .required(true),
+        )
+        .add_option(
+            CreateCommandOption::new(
+                CommandOptionType::String,
+                "confirm",
+                "Confirmation exacte : DELETE-ID.",
+            )
+            .required(true),
+        )
 }
 
 fn banlist_command() -> CreateCommand {

@@ -1,4 +1,4 @@
-use crate::config::DatabaseConfig;
+use crate::config::{AccountPasswordMode, DatabaseConfig};
 use anyhow::{Context, Result};
 use sqlx::{mysql::MySqlPoolOptions, MySqlPool, Row};
 use std::time::Duration;
@@ -53,6 +53,9 @@ impl DatabaseTable {
 
 use crate::rathenafr::models::*;
 
+const ITEM_SEARCH_TABLES: &[&str] = &["item_db", "item_db_re"];
+const MOB_SEARCH_TABLES: &[&str] = &["mob_db", "mob_db_re"];
+
 impl RAthenaFrDatabase {
     pub async fn connect(config: &DatabaseConfig) -> Result<Self> {
         let pool = MySqlPoolOptions::new()
@@ -102,6 +105,36 @@ impl RAthenaFrDatabase {
 
         let count: i64 = row.try_get("table_count")?;
         Ok(count > 0)
+    }
+
+    async fn table_has_columns(&self, table_name: &str, column_names: &[&str]) -> Result<bool> {
+        if !self.table_exists(table_name).await? {
+            return Ok(false);
+        }
+
+        for column_name in column_names {
+            let row = sqlx::query(
+                r#"
+                SELECT CAST(COUNT(*) AS SIGNED) AS column_count
+                FROM information_schema.columns
+                WHERE table_schema = DATABASE()
+                  AND table_name = ?
+                  AND column_name = ?
+                "#,
+            )
+            .bind(table_name)
+            .bind(column_name)
+            .fetch_one(&self.pool)
+            .await
+            .context("vérification de disponibilité des colonnes rAthena")?;
+
+            let count: i64 = row.try_get("column_count")?;
+            if count == 0 {
+                return Ok(false);
+            }
+        }
+
+        Ok(true)
     }
 
     pub async fn database_status(&self, group_threshold: i32) -> Result<DatabaseStatus> {
@@ -320,6 +353,225 @@ impl RAthenaFrDatabase {
                     base_level: row.try_get("base_level")?,
                     job_level: row.try_get("job_level")?,
                     map: row.try_get("last_map")?,
+                })
+            })
+            .collect()
+    }
+
+    pub async fn search_all(
+        &self,
+        group_threshold: i32,
+        query: &str,
+        limit: u32,
+    ) -> Result<SearchResults> {
+        Ok(SearchResults {
+            characters: self
+                .search_characters(group_threshold, query, limit)
+                .await
+                .context("search characters for combined search")?,
+            items: self
+                .search_items(query, limit)
+                .await
+                .context("search items for combined search")?,
+            monsters: self
+                .search_monsters(query, limit)
+                .await
+                .context("search monsters for combined search")?,
+        })
+    }
+
+    async fn search_items(&self, query: &str, limit: u32) -> Result<Vec<ItemSearchEntry>> {
+        let mut entries = Vec::new();
+
+        for table_name in ITEM_SEARCH_TABLES {
+            if !self
+                .table_has_columns(table_name, &["id", "name_aegis", "name_english", "type"])
+                .await?
+            {
+                continue;
+            }
+
+            let table_entries = self.search_items_in_table(table_name, query, limit).await?;
+            entries.extend(table_entries);
+
+            if entries.len() >= limit as usize {
+                entries.truncate(limit as usize);
+                break;
+            }
+        }
+
+        Ok(entries)
+    }
+
+    async fn search_items_in_table(
+        &self,
+        table_name: &str,
+        query: &str,
+        limit: u32,
+    ) -> Result<Vec<ItemSearchEntry>> {
+        let pattern = format!("%{}%", query);
+        let prefix = format!("{}%", query);
+        let sql = format!(
+            r#"
+            SELECT
+                ? AS source_table,
+                CAST(id AS SIGNED) AS item_id,
+                name_aegis,
+                name_english,
+                CAST(`type` AS CHAR) AS item_type
+            FROM `{table_name}`
+            WHERE CAST(id AS CHAR) = ?
+               OR name_aegis LIKE ?
+               OR name_english LIKE ?
+            ORDER BY
+                CASE
+                    WHEN CAST(id AS CHAR) = ? THEN 0
+                    WHEN name_english = ? OR name_aegis = ? THEN 1
+                    WHEN name_english LIKE ? OR name_aegis LIKE ? THEN 2
+                    ELSE 3
+                END,
+                id ASC
+            LIMIT ?
+            "#
+        );
+
+        let rows = sqlx::query(&sql)
+            .bind(table_name)
+            .bind(query)
+            .bind(&pattern)
+            .bind(&pattern)
+            .bind(query)
+            .bind(query)
+            .bind(query)
+            .bind(&prefix)
+            .bind(&prefix)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await
+            .with_context(|| format!("search items in {table_name}"))?;
+
+        rows.into_iter()
+            .map(|row| {
+                let english_name = row.try_get::<String, _>("name_english")?;
+                let aegis_name = row.try_get::<String, _>("name_aegis")?;
+                let display_name = if english_name.trim().is_empty() {
+                    aegis_name.clone()
+                } else {
+                    english_name
+                };
+
+                Ok(ItemSearchEntry {
+                    item_id: row.try_get("item_id")?,
+                    aegis_name,
+                    display_name,
+                    item_type: row.try_get("item_type")?,
+                    source_table: row.try_get("source_table")?,
+                })
+            })
+            .collect()
+    }
+
+    async fn search_monsters(&self, query: &str, limit: u32) -> Result<Vec<MonsterSearchEntry>> {
+        let mut entries = Vec::new();
+
+        for table_name in MOB_SEARCH_TABLES {
+            if !self
+                .table_has_columns(
+                    table_name,
+                    &["id", "sprite", "kROName", "iROName", "LV", "HP"],
+                )
+                .await?
+            {
+                continue;
+            }
+
+            let table_entries = self
+                .search_monsters_in_table(table_name, query, limit)
+                .await?;
+            entries.extend(table_entries);
+
+            if entries.len() >= limit as usize {
+                entries.truncate(limit as usize);
+                break;
+            }
+        }
+
+        Ok(entries)
+    }
+
+    async fn search_monsters_in_table(
+        &self,
+        table_name: &str,
+        query: &str,
+        limit: u32,
+    ) -> Result<Vec<MonsterSearchEntry>> {
+        let pattern = format!("%{}%", query);
+        let prefix = format!("{}%", query);
+        let sql = format!(
+            r#"
+            SELECT
+                ? AS source_table,
+                CAST(id AS SIGNED) AS monster_id,
+                sprite,
+                kROName,
+                iROName,
+                CAST(LV AS SIGNED) AS monster_level,
+                CAST(HP AS SIGNED) AS monster_hp
+            FROM `{table_name}`
+            WHERE CAST(id AS CHAR) = ?
+               OR sprite LIKE ?
+               OR kROName LIKE ?
+               OR iROName LIKE ?
+            ORDER BY
+                CASE
+                    WHEN CAST(id AS CHAR) = ? THEN 0
+                    WHEN iROName = ? OR kROName = ? OR sprite = ? THEN 1
+                    WHEN iROName LIKE ? OR kROName LIKE ? OR sprite LIKE ? THEN 2
+                    ELSE 3
+                END,
+                id ASC
+            LIMIT ?
+            "#
+        );
+
+        let rows = sqlx::query(&sql)
+            .bind(table_name)
+            .bind(query)
+            .bind(&pattern)
+            .bind(&pattern)
+            .bind(&pattern)
+            .bind(query)
+            .bind(query)
+            .bind(query)
+            .bind(query)
+            .bind(&prefix)
+            .bind(&prefix)
+            .bind(&prefix)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await
+            .with_context(|| format!("search monsters in {table_name}"))?;
+
+        rows.into_iter()
+            .map(|row| {
+                let iro_name = row.try_get::<String, _>("iROName")?;
+                let kro_name = row.try_get::<String, _>("kROName")?;
+                let sprite = row.try_get::<String, _>("sprite")?;
+                let display_name = if !iro_name.trim().is_empty() {
+                    iro_name
+                } else if !kro_name.trim().is_empty() {
+                    kro_name
+                } else {
+                    sprite.clone()
+                };
+
+                Ok(MonsterSearchEntry {
+                    monster_id: row.try_get("monster_id")?,
+                    sprite,
+                    display_name,
+                    level: row.try_get("monster_level")?,
+                    hp: row.try_get("monster_hp")?,
+                    source_table: row.try_get("source_table")?,
                 })
             })
             .collect()
@@ -1229,6 +1481,152 @@ impl RAthenaFrDatabase {
             })),
             None => Ok(None),
         }
+    }
+
+    pub async fn create_account(
+        &self,
+        userid: &str,
+        password: &str,
+        password_mode: AccountPasswordMode,
+        sex: &str,
+        email: &str,
+    ) -> Result<CreatedAccount> {
+        if self.account_userid_exists(userid).await? {
+            anyhow::bail!("Le compte `{userid}` existe déjà.");
+        }
+
+        let sql = match password_mode {
+            AccountPasswordMode::Plain => {
+                r#"
+                INSERT INTO `login` (userid, user_pass, sex, email)
+                VALUES (?, ?, ?, ?)
+                "#
+            }
+            AccountPasswordMode::Md5 => {
+                r#"
+                INSERT INTO `login` (userid, user_pass, sex, email)
+                VALUES (?, MD5(?), ?, ?)
+                "#
+            }
+        };
+
+        let result = sqlx::query(sql)
+            .bind(userid)
+            .bind(password)
+            .bind(sex)
+            .bind(email)
+            .execute(&self.pool)
+            .await
+            .context("create rAthena account")?;
+
+        Ok(CreatedAccount {
+            account_id: i64::try_from(result.last_insert_id()).unwrap_or(i64::MAX),
+            userid: userid.to_string(),
+            sex: sex.to_string(),
+            email: email.to_string(),
+        })
+    }
+
+    pub async fn account_userid_exists(&self, userid: &str) -> Result<bool> {
+        let existing = sqlx::query(
+            r#"
+            SELECT CAST(COUNT(*) AS SIGNED) AS account_count
+            FROM `login`
+            WHERE userid = ?
+            "#,
+        )
+        .bind(userid)
+        .fetch_one(&self.pool)
+        .await
+        .context("check account username availability")?;
+
+        let account_count: i64 = existing.try_get("account_count")?;
+        Ok(account_count > 0)
+    }
+
+    pub async fn delete_account_if_empty(&self, account_id: i64) -> Result<AccountDeleteResult> {
+        let storage_table_available = self.table_has_columns("storage", &["account_id"]).await?;
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .context("start account delete transaction")?;
+
+        let row = sqlx::query(
+            r#"
+            SELECT
+                l.userid,
+                (
+                    SELECT CAST(COUNT(*) AS SIGNED)
+                    FROM `char` c
+                    WHERE c.account_id = l.account_id
+                ) AS characters
+            FROM `login` l
+            WHERE l.account_id = ?
+            FOR UPDATE
+            "#,
+        )
+        .bind(account_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .context("fetch account before delete")?;
+
+        let Some(row) = row else {
+            tx.commit()
+                .await
+                .context("commit missing account delete transaction")?;
+            return Ok(AccountDeleteResult::NotFound { account_id });
+        };
+
+        let userid: String = row.try_get("userid")?;
+        let characters: i64 = row.try_get("characters")?;
+        let storage_rows = if storage_table_available {
+            let row = sqlx::query(
+                r#"
+                SELECT CAST(COUNT(*) AS SIGNED) AS storage_rows
+                FROM `storage`
+                WHERE account_id = ?
+                "#,
+            )
+            .bind(account_id)
+            .fetch_one(&mut *tx)
+            .await
+            .context("count account storage rows before delete")?;
+
+            row.try_get("storage_rows")?
+        } else {
+            0
+        };
+
+        if characters > 0 || storage_rows > 0 {
+            tx.commit()
+                .await
+                .context("commit refused account delete transaction")?;
+            return Ok(AccountDeleteResult::HasRelatedData {
+                account_id,
+                userid,
+                characters,
+                storage_rows,
+            });
+        }
+
+        sqlx::query(
+            r#"
+            DELETE FROM `login`
+            WHERE account_id = ?
+            LIMIT 1
+            "#,
+        )
+        .bind(account_id)
+        .execute(&mut *tx)
+        .await
+        .context("delete empty account")?;
+
+        tx.commit()
+            .await
+            .context("commit account delete transaction")?;
+
+        Ok(AccountDeleteResult::Deleted { account_id, userid })
     }
 
     pub async fn character_quests(

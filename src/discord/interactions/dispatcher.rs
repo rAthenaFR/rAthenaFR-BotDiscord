@@ -26,8 +26,8 @@ const MARKET_CACHE_TTL_SECONDS: u64 = 20;
 
 #[cfg(test)]
 const CACHED_COMMAND_NAMES: &[&str] = &[
-    "status", "guildes", "classes", "mapstats", "castles", "whosell", "whobuy", "market",
-    "venders", "buyers",
+    "status", "guilds", "classes", "mapstats", "castles", "whosell", "whobuy", "market", "venders",
+    "buyers",
 ];
 
 const BUYING_STORE_TABLES: &[DatabaseTable] =
@@ -169,8 +169,9 @@ impl Handler {
             "online" => self.handle_online(context, command).await,
             "top" => self.handle_top(context, command).await,
             "player" => self.handle_player(context, command).await,
-            "guildes" => self.handle_guilds(context, command).await,
+            "guilds" | "guildes" => self.handle_guilds(context, command).await,
             "search" => self.handle_search(context, command).await,
+            "createaccount" => self.handle_createaccount(context, command).await,
             "topzeny" => self.handle_topzeny(context, command).await,
             "guild" => self.handle_guild(context, command).await,
             "guildmembers" => self.handle_guildmembers(context, command).await,
@@ -200,6 +201,7 @@ impl Handler {
             "itemcount" => self.handle_itemcount(context, command).await,
             "itemowners" => self.handle_itemowners(context, command).await,
             "accountoverview" => self.handle_accountoverview(context, command).await,
+            "accountmanage" => self.handle_accountmanage(context, command).await,
             "banlist" => self.handle_banlist(context, command).await,
             "accountchars" => self.handle_accountchars(context, command).await,
             "accountstatus" => self.handle_accountstatus(context, command).await,
@@ -329,10 +331,10 @@ impl Handler {
         };
 
         let (display_limit, query_limit) = self.list_limits(command);
-        let characters = self
+        let results = self
             .state
             .database
-            .search_characters(
+            .search_all(
                 self.state.config.display.public_character_group_threshold(),
                 query,
                 query_limit,
@@ -342,8 +344,88 @@ impl Handler {
         self.respond_embed(
             context,
             command,
-            embeds::search_embed(query, &characters, display_limit),
+            embeds::search_embed(query, &results, display_limit),
             false,
+        )
+        .await
+    }
+
+    async fn handle_createaccount(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        if !self.state.config.account_commands.creation_enabled {
+            return self
+                .respond_embed(
+                    context,
+                    command,
+                    embeds::account_creation_disabled_embed(),
+                    true,
+                )
+                .await;
+        }
+
+        let Some(username) = string_option(command, "username") else {
+            return self
+                .respond_error(context, command, "Option obligatoire manquante : username.")
+                .await;
+        };
+        let Some(password) = string_option(command, "password") else {
+            return self
+                .respond_error(context, command, "Option obligatoire manquante : password.")
+                .await;
+        };
+        let Some(sex) = string_option(command, "sex") else {
+            return self
+                .respond_error(context, command, "Option obligatoire manquante : sex.")
+                .await;
+        };
+
+        let username = match validate_account_username(username) {
+            Ok(username) => username,
+            Err(message) => return self.respond_error(context, command, &message).await,
+        };
+        let password = match validate_account_password(password) {
+            Ok(password) => password,
+            Err(message) => return self.respond_error(context, command, &message).await,
+        };
+        let sex = match validate_account_sex(sex) {
+            Ok(sex) => sex,
+            Err(message) => return self.respond_error(context, command, &message).await,
+        };
+        let email = match validate_account_email(string_option(command, "email")) {
+            Ok(email) => email,
+            Err(message) => return self.respond_error(context, command, &message).await,
+        };
+
+        if self.state.database.account_userid_exists(&username).await? {
+            return self
+                .respond_error(
+                    context,
+                    command,
+                    &format!("Le compte `{username}` existe déjà."),
+                )
+                .await;
+        }
+
+        let account = self
+            .state
+            .database
+            .create_account(
+                &username,
+                &password,
+                self.state.config.account_commands.password_mode,
+                &sex,
+                &email,
+            )
+            .await?;
+
+        self.respond_embed(
+            context,
+            command,
+            embeds::account_created_embed(&account),
+            true,
         )
         .await
     }
@@ -1207,6 +1289,74 @@ impl Handler {
         self.respond_embed(context, command, embed, true).await
     }
 
+    async fn handle_accountmanage(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        if !self.has_owner_access(command) {
+            return self
+                .respond_embed(
+                    context,
+                    command,
+                    embeds::account_manage_owner_only_embed(),
+                    true,
+                )
+                .await;
+        }
+
+        let Some(account_id) = positive_integer_option(command, "account_id") else {
+            return self
+                .respond_error(
+                    context,
+                    command,
+                    "Option obligatoire manquante : account_id.",
+                )
+                .await;
+        };
+        let Some(action) = string_option(command, "action") else {
+            return self
+                .respond_error(context, command, "Option obligatoire manquante : action.")
+                .await;
+        };
+        let Some(confirm) = string_option(command, "confirm") else {
+            return self
+                .respond_error(context, command, "Option obligatoire manquante : confirm.")
+                .await;
+        };
+
+        if !action.eq_ignore_ascii_case("delete") {
+            return self
+                .respond_error(context, command, "Action supportée : delete.")
+                .await;
+        }
+
+        let expected_confirmation = format!("DELETE-{account_id}");
+        if confirm != expected_confirmation {
+            return self
+                .respond_error(
+                    context,
+                    command,
+                    &format!("Confirmation attendue : `{expected_confirmation}`."),
+                )
+                .await;
+        }
+
+        let result = self
+            .state
+            .database
+            .delete_account_if_empty(account_id)
+            .await?;
+
+        self.respond_embed(
+            context,
+            command,
+            embeds::account_delete_result_embed(&result),
+            true,
+        )
+        .await
+    }
+
     async fn handle_banlist(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
         if !self.has_staff_access(command) {
             return self
@@ -1310,6 +1460,20 @@ impl Handler {
             &config.admin_role_ids,
             &config.owner_role_ids,
         )
+    }
+
+    fn has_owner_access(&self, command: &CommandInteraction) -> bool {
+        let config = &self.state.config.discord;
+        let Some(member) = command.member.as_ref() else {
+            return false;
+        };
+        let member_role_ids = member
+            .roles
+            .iter()
+            .map(|role| role.get())
+            .collect::<Vec<_>>();
+
+        has_configured_owner_role(&member_role_ids, &config.owner_role_ids)
     }
 
     async fn respond_embed(
@@ -1590,6 +1754,74 @@ fn has_configured_staff_role(
             .any(|role_id| allowed_role_ids.contains(role_id))
 }
 
+fn has_configured_owner_role(member_role_ids: &[u64], owner_role_ids: &[u64]) -> bool {
+    !owner_role_ids.is_empty()
+        && member_role_ids
+            .iter()
+            .any(|role_id| owner_role_ids.contains(role_id))
+}
+
+fn validate_account_username(value: &str) -> std::result::Result<String, String> {
+    let trimmed = value.trim();
+
+    if !(4..=23).contains(&trimmed.len()) {
+        return Err("Le nom de compte doit contenir entre 4 et 23 caractères.".to_string());
+    }
+
+    if !trimmed
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+    {
+        return Err(
+            "Le nom de compte doit contenir uniquement lettres, chiffres ou `_`.".to_string(),
+        );
+    }
+
+    Ok(trimmed.to_string())
+}
+
+fn validate_account_password(value: &str) -> std::result::Result<String, String> {
+    if !(8..=32).contains(&value.len()) {
+        return Err("Le mot de passe doit contenir entre 8 et 32 caractères.".to_string());
+    }
+
+    if value
+        .chars()
+        .any(|character| character.is_control() || character.is_whitespace())
+    {
+        return Err(
+            "Le mot de passe ne doit pas contenir d’espace ou caractère de contrôle.".to_string(),
+        );
+    }
+
+    Ok(value.to_string())
+}
+
+fn validate_account_sex(value: &str) -> std::result::Result<String, String> {
+    match value.trim().to_ascii_uppercase().as_str() {
+        "M" => Ok("M".to_string()),
+        "F" => Ok("F".to_string()),
+        _ => Err("Le sexe du compte doit être `M` ou `F`.".to_string()),
+    }
+}
+
+fn validate_account_email(value: Option<&str>) -> std::result::Result<String, String> {
+    let email = value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("a@a.com");
+
+    if email.len() > 39 {
+        return Err("L’email du compte doit contenir au maximum 39 caractères.".to_string());
+    }
+
+    if !email.contains('@') || email.chars().any(|character| character.is_control()) {
+        return Err("L’email du compte est invalide.".to_string());
+    }
+
+    Ok(email.to_string())
+}
+
 async fn cached_data<T, F>(
     command_name: &'static str,
     key: String,
@@ -1645,6 +1877,30 @@ mod tests {
         assert!(has_configured_staff_role(&[10], &[10], &[], &[]));
         assert!(has_configured_staff_role(&[30], &[], &[30], &[]));
         assert!(has_configured_staff_role(&[40], &[], &[], &[40]));
+    }
+
+    #[test]
+    fn owner_role_logic_requires_configured_owner_role() {
+        assert!(!has_configured_owner_role(&[10], &[]));
+        assert!(!has_configured_owner_role(&[10], &[20]));
+        assert!(has_configured_owner_role(&[10], &[10]));
+    }
+
+    #[test]
+    fn account_username_validation_is_strict() {
+        assert_eq!(validate_account_username("User_123").unwrap(), "User_123");
+        assert!(validate_account_username("abc").is_err());
+        assert!(validate_account_username("invalid-name").is_err());
+    }
+
+    #[test]
+    fn account_email_defaults_and_validates() {
+        assert_eq!(validate_account_email(None).unwrap(), "a@a.com");
+        assert_eq!(
+            validate_account_email(Some(" user@example.test ")).unwrap(),
+            "user@example.test"
+        );
+        assert!(validate_account_email(Some("invalid")).is_err());
     }
 
     #[test]

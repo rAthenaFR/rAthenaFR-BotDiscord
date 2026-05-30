@@ -38,7 +38,7 @@ cargo run -- --deploy
 
 ## Règles de développement
 
-- Ne pas ajouter de requêtes d’écriture SQL.
+- Ne pas ajouter de requêtes d’écriture SQL hors fonctionnalités de compte explicitement documentées.
 - Ne pas afficher de données sensibles.
 - Garder les textes visibles en français.
 - Garder `rAthena` dans l’affichage des commandes et `Bot Discord rAthenaFR` dans le footer par défaut.

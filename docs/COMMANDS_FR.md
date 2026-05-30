@@ -11,7 +11,8 @@ Documentation française de rAthenaFR Discord Bot pour le projet rAthena.
 | `/top` | Classement par niveau. |
 | `/player name:` | Profil d’un personnage. |
 | `/guilds` | Classement des guildes. |
-| `/search query:` | Recherche partielle de personnages. |
+| `/search query:` | Recherche partielle de personnages, objets et monstres. |
+| `/createaccount username: password: sex: email:` | Création de compte si activée. |
 | `/topzeny` | Classement zeny. |
 | `/guild name:` | Détail d’une guilde. |
 | `/guildmembers name:` | Membres d’une guilde. |
@@ -36,9 +37,13 @@ Documentation française de rAthenaFR Discord Bot pour le projet rAthena.
 | `/venders` | Boutiques de vente actives. |
 | `/buyers` | Boutiques d’achat actives. |
 
+La recherche d’objets et de monstres utilise les tables SQL `item_db`, `item_db_re`, `mob_db` et `mob_db_re` quand elles existent dans la base cible.
+
 ## Commandes staff
 
 Ces commandes exigent un rôle présent dans `RATHENAFR_STAFF_ROLE_IDS`, `RATHENAFR_ADMIN_ROLE_IDS` ou `RATHENAFR_OWNER_ROLE_IDS`.
+
+`/accountmanage` exige explicitement un rôle présent dans `RATHENAFR_OWNER_ROLE_IDS`.
 
 | Commande | Description |
 |---|---|
@@ -48,6 +53,7 @@ Ces commandes exigent un rôle présent dans `RATHENAFR_STAFF_ROLE_IDS`, `RATHEN
 | `/itemcount` | Comptage global d’un objet. |
 | `/itemowners` | Propriétaires visibles d’un objet. |
 | `/accountoverview` | Résumé sûr d’un compte. |
+| `/accountmanage` | Gestion owner d’un compte. |
 | `/banlist` | Comptes bloqués ou bannis. |
 | `/accountchars` | Personnages d’un compte. |
 | `/accountstatus` | Statut sûr d’un compte. |

@@ -39,7 +39,7 @@ pub fn command_error_embed(details: &str) -> CreateEmbed {
     if lower.contains("access denied") || lower.contains("permission") {
         return warning_embed(
             "Problème de permissions base de données",
-            "Le bot joint MariaDB, mais l’utilisateur SQL configuré n’a pas assez de droits de lecture pour cette commande.",
+            "Le bot joint MariaDB, mais l’utilisateur SQL configuré n’a pas assez de droits pour cette commande.",
         );
     }
 
@@ -117,19 +117,18 @@ pub fn online_embed(characters: &[CharacterSummary], requested_limit: u32) -> Cr
     .field("Personnages", list.value, false)
 }
 
-pub fn search_embed(
-    query: &str,
-    characters: &[CharacterSummary],
-    requested_limit: u32,
-) -> CreateEmbed {
-    if characters.is_empty() {
+pub fn search_embed(query: &str, results: &SearchResults, requested_limit: u32) -> CreateEmbed {
+    if results.is_empty() {
         return warning_embed(
-            "Recherche de personnage rAthenaFR",
-            format!("Aucun personnage visible ne correspond à `{}`.", query),
+            "Recherche rAthenaFR",
+            format!(
+                "Aucun personnage, objet ou monstre ne correspond à `{}`.",
+                query
+            ),
         );
     }
 
-    let list = limited_list(characters, requested_limit, |index, character| {
+    let character_list = limited_list(&results.characters, requested_limit, |index, character| {
         format!(
             "`{:>2}.` **{}** — Niv. `{}` / Job `{}` — {} — `{}`",
             index + 1,
@@ -140,13 +139,62 @@ pub fn search_embed(
             character.map,
         )
     });
+    let item_list = limited_list(&results.items, requested_limit, |index, item| {
+        format!(
+            "`{:>2}.` **{}** — ID `{}` — Type `{}` — `{}` — `{}`",
+            index + 1,
+            item.display_name,
+            item.item_id,
+            item.item_type,
+            item.aegis_name,
+            item.source_table,
+        )
+    });
+    let monster_list = limited_list(&results.monsters, requested_limit, |index, monster| {
+        format!(
+            "`{:>2}.` **{}** — ID `{}` — Sprite `{}` — Lv. `{}` — HP `{}` — `{}`",
+            index + 1,
+            monster.display_name,
+            monster.monster_id,
+            monster.sprite,
+            monster.level,
+            format_number(monster.hp),
+            monster.source_table,
+        )
+    });
 
-    info_embed(
-        "Recherche de personnage rAthenaFR",
+    let mut embed = info_embed(
+        "Recherche rAthenaFR",
         format!("Résultats de recherche pour `{}`.", query),
-    )
-    .field("Résumé", list_summary(&list, "personnages"), false)
-    .field("Personnages", list.value, false)
+    );
+
+    if !results.characters.is_empty() {
+        embed = embed
+            .field(
+                "Résumé personnages",
+                list_summary(&character_list, "personnages"),
+                false,
+            )
+            .field("Personnages", character_list.value, false);
+    }
+
+    if !results.items.is_empty() {
+        embed = embed
+            .field("Résumé objets", list_summary(&item_list, "objets"), false)
+            .field("Objets", item_list.value, false);
+    }
+
+    if !results.monsters.is_empty() {
+        embed = embed
+            .field(
+                "Résumé monstres",
+                list_summary(&monster_list, "monstres"),
+                false,
+            )
+            .field("Monstres", monster_list.value, false);
+    }
+
+    embed
 }
 
 pub fn ranking_embed(entries: &[RankingEntry], requested_limit: u32) -> CreateEmbed {
@@ -959,6 +1007,54 @@ pub fn account_not_found_embed(account_id: i64) -> CreateEmbed {
         "Recherche de compte rAthenaFR",
         format!("Aucun compte ne correspond à l’ID `{}`.", account_id),
     )
+}
+
+pub fn account_creation_disabled_embed() -> CreateEmbed {
+    warning_embed(
+        "Création de compte désactivée",
+        "La commande `/createaccount` existe, mais la création publique est désactivée sur ce bot.",
+    )
+}
+
+pub fn account_created_embed(account: &CreatedAccount) -> CreateEmbed {
+    success_embed(
+        "Compte rAthena créé",
+        format!("Le compte `{}` a été créé.", account.userid),
+    )
+    .field("ID compte", format!("`{}`", account.account_id), true)
+    .field("Sexe", format!("`{}`", account.sex), true)
+    .field("Email", format!("`{}`", account.email), true)
+    .field(
+        "Important",
+        "Le mot de passe n’est jamais réaffiché par le bot.",
+        false,
+    )
+}
+
+pub fn account_manage_owner_only_embed() -> CreateEmbed {
+    error_embed("Commande réservée aux rôles owner configurés.")
+}
+
+pub fn account_delete_result_embed(result: &AccountDeleteResult) -> CreateEmbed {
+    match result {
+        AccountDeleteResult::Deleted { account_id, userid } => success_embed(
+            "Compte rAthena supprimé",
+            format!("Le compte `{}` (`{}`) a été supprimé.", userid, account_id),
+        ),
+        AccountDeleteResult::HasRelatedData {
+            account_id,
+            userid,
+            characters,
+            storage_rows,
+        } => warning_embed(
+            "Suppression refusée",
+            format!(
+                "Le compte `{}` (`{}`) possède `{}` personnage(s) et `{}` ligne(s) de stockage. La suppression directe est bloquée pour éviter des données orphelines.",
+                userid, account_id, characters, storage_rows
+            ),
+        ),
+        AccountDeleteResult::NotFound { account_id } => account_not_found_embed(*account_id),
+    }
 }
 
 pub fn character_quests_embed(

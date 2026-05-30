@@ -18,6 +18,38 @@ pub struct CharacterSummary {
 }
 
 #[derive(Debug, Clone)]
+pub struct SearchResults {
+    pub characters: Vec<CharacterSummary>,
+    pub items: Vec<ItemSearchEntry>,
+    pub monsters: Vec<MonsterSearchEntry>,
+}
+
+impl SearchResults {
+    pub fn is_empty(&self) -> bool {
+        self.characters.is_empty() && self.items.is_empty() && self.monsters.is_empty()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ItemSearchEntry {
+    pub item_id: i64,
+    pub aegis_name: String,
+    pub display_name: String,
+    pub item_type: String,
+    pub source_table: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct MonsterSearchEntry {
+    pub monster_id: i64,
+    pub sprite: String,
+    pub display_name: String,
+    pub level: i32,
+    pub hp: i64,
+    pub source_table: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct RankingEntry {
     pub rank: usize,
     pub name: String,
@@ -254,6 +286,31 @@ pub struct AccountStatus {
     pub online_characters: i64,
     pub total_zeny: i64,
     pub lastlogin: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreatedAccount {
+    pub account_id: i64,
+    pub userid: String,
+    pub sex: String,
+    pub email: String,
+}
+
+#[derive(Debug, Clone)]
+pub enum AccountDeleteResult {
+    Deleted {
+        account_id: i64,
+        userid: String,
+    },
+    HasRelatedData {
+        account_id: i64,
+        userid: String,
+        characters: i64,
+        storage_rows: i64,
+    },
+    NotFound {
+        account_id: i64,
+    },
 }
 
 #[derive(Debug, Clone)]
