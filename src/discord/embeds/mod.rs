@@ -7,6 +7,7 @@ const COLOR_ERROR: Colour = Colour::new(0xED4245);
 const COLOR_INFO: Colour = Colour::new(0x5865F2);
 const COLOR_PURPLE: Colour = Colour::new(0x9B59B6);
 const EMBED_FIELD_VALUE_LIMIT: usize = 1000;
+const COMMAND_DISPLAY_NAME: &str = "rAthena";
 
 struct LimitedList {
     value: String,
@@ -62,11 +63,11 @@ pub fn status_embed(status: &DatabaseStatus, services: &[RAthenaFrServiceStatus]
     };
 
     base_embed(
-        "Statut rAthenaFR",
-        "État actuel des services et compteurs lus depuis la base rAthenaFR ciblée.",
+        "Statut rAthena",
+        "État actuel des services et compteurs lus depuis la base rAthena ciblée.",
         color,
     )
-    .field("Services rAthenaFR", service_status_lines(services), false)
+    .field("Services rAthena", service_status_lines(services), false)
     .field(
         "Base de données",
         format!("`{}`", status.database_name),
@@ -215,7 +216,7 @@ pub fn player_embed(profile: &PlayerProfile) -> CreateEmbed {
     };
 
     success_embed(
-        "Profil de personnage rAthenaFR",
+        "Profil de personnage rAthena",
         format!("Informations détaillées pour **{}**.", profile.name),
     )
     .field("Statut", status, true)
@@ -250,7 +251,7 @@ pub fn player_not_found_embed(name: &str) -> CreateEmbed {
 
 pub fn guilds_embed(guilds: &[GuildSummary], requested_limit: u32) -> CreateEmbed {
     if guilds.is_empty() {
-        return warning_embed("Classement des guildes rAthenaFR", "Aucune guilde trouvée.");
+        return warning_embed("Classement des guildes rAthena", "Aucune guilde trouvée.");
     }
 
     let list = limited_list(guilds, requested_limit, |index, guild| {
@@ -351,7 +352,7 @@ pub fn guild_members_embed(
 pub fn classes_embed(entries: &[ClassDistributionEntry], requested_limit: u32) -> CreateEmbed {
     if entries.is_empty() {
         return warning_embed(
-            "Répartition des classes rAthenaFR",
+            "Répartition des classes rAthena",
             "Aucun personnage visible trouvé.",
         );
     }
@@ -603,7 +604,7 @@ pub fn zeny_embed(summary: &ZenySummary) -> CreateEmbed {
 
     CreateEmbed::new()
         .title(brand_text("Statistiques zeny rAthenaFR"))
-        .description("Statistiques de zeny visibles depuis la base rAthenaFR ciblée. Les personnages GM peuvent être exclus via les filtres de classement.")
+        .description(brand_text("Statistiques de zeny visibles depuis la base rAthenaFR ciblée. Les personnages GM peuvent être exclus via les filtres de classement."))
         .color(COLOR_PURPLE)
         .footer(serenity::all::CreateEmbedFooter::new(footer_text()))
         .timestamp(Timestamp::now())
@@ -1456,7 +1457,7 @@ pub fn error_embed(message: &str) -> CreateEmbed {
 
 fn service_status_lines(services: &[RAthenaFrServiceStatus]) -> String {
     if services.is_empty() {
-        return "Aucun endpoint de service rAthenaFR configuré.".to_string();
+        return "Aucun endpoint de service rAthena configuré.".to_string();
     }
 
     services
@@ -1508,7 +1509,7 @@ fn footer_text() -> String {
 }
 
 fn brand_text(value: impl Into<String>) -> String {
-    value.into().replace("rAthenaFR", &display_name())
+    value.into().replace("rAthenaFR", COMMAND_DISPLAY_NAME)
 }
 
 fn party_exp_mode(value: i32) -> String {

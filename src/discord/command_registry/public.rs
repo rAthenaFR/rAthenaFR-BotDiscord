@@ -62,7 +62,7 @@ fn player_command() -> CreateCommand {
 }
 
 fn guilds_command() -> CreateCommand {
-    CreateCommand::new("guildes")
+    CreateCommand::new("guilds")
         .description("Affiche les guildes les plus fortes depuis la base de données.")
         .add_option(limit_option())
 }
@@ -143,14 +143,14 @@ fn maponline_command() -> CreateCommand {
 fn party_command() -> CreateCommand {
     CreateCommand::new("party")
         .description(
-            "Affiche les informations détaillées d’un groupe rAthenaFR depuis la base de données.",
+            "Affiche les informations détaillées d’un groupe rAthena depuis la base de données.",
         )
         .add_option(party_name_option())
 }
 
 fn partymembers_command() -> CreateCommand {
     CreateCommand::new("partymembers")
-        .description("Liste les membres visibles d’un groupe rAthenaFR depuis la base de données.")
+        .description("Liste les membres visibles d’un groupe rAthena depuis la base de données.")
         .add_option(party_name_option())
         .add_option(limit_option())
 }
