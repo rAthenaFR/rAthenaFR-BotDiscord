@@ -351,142 +351,139 @@ impl Handler {
     }
 
     async fn handle_createaccount(
-    &self,
-    context: &Context,
-    command: &CommandInteraction,
-) -> Result<()> {
-    if !self.state.config.account_commands.creation_enabled {
-        return self
-            .respond_embed(
-                context,
-                command,
-                embeds::account_creation_disabled_embed(),
-                true,
-            )
-            .await;
-    }
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        if !self.state.config.account_commands.creation_enabled {
+            return self
+                .respond_embed(
+                    context,
+                    command,
+                    embeds::account_creation_disabled_embed(),
+                    true,
+                )
+                .await;
+        }
 
-    let Some(username) = string_option(command, "username") else {
-        return self
-            .respond_error(context, command, "Option obligatoire manquante : username.")
-            .await;
-    };
-    let Some(password) = string_option(command, "password") else {
-        return self
-            .respond_error(context, command, "Option obligatoire manquante : password.")
-            .await;
-    };
-    let Some(sex) = string_option(command, "sex") else {
-        return self
-            .respond_error(context, command, "Option obligatoire manquante : sex.")
-            .await;
-    };
-    let Some(birthdate) = string_option(command, "birthdate") else {
-        return self
-            .respond_error(
-                context,
-                command,
-                "Option obligatoire manquante : birthdate.",
-            )
-            .await;
-    };
+        let Some(username) = string_option(command, "username") else {
+            return self
+                .respond_error(context, command, "Option obligatoire manquante : username.")
+                .await;
+        };
+        let Some(password) = string_option(command, "password") else {
+            return self
+                .respond_error(context, command, "Option obligatoire manquante : password.")
+                .await;
+        };
+        let Some(sex) = string_option(command, "sex") else {
+            return self
+                .respond_error(context, command, "Option obligatoire manquante : sex.")
+                .await;
+        };
+        let Some(birthdate) = string_option(command, "birthdate") else {
+            return self
+                .respond_error(
+                    context,
+                    command,
+                    "Option obligatoire manquante : birthdate.",
+                )
+                .await;
+        };
 
-    let username = match validate_account_username(username) {
-        Ok(username) => username,
-        Err(message) => return self.respond_error(context, command, &message).await,
-    };
-    let password = match validate_account_password(password) {
-        Ok(password) => password,
-        Err(message) => return self.respond_error(context, command, &message).await,
-    };
-    let sex = match validate_account_sex(sex) {
-        Ok(sex) => sex,
-        Err(message) => return self.respond_error(context, command, &message).await,
-    };
+        let username = match validate_account_username(username) {
+            Ok(username) => username,
+            Err(message) => return self.respond_error(context, command, &message).await,
+        };
+        let password = match validate_account_password(password) {
+            Ok(password) => password,
+            Err(message) => return self.respond_error(context, command, &message).await,
+        };
+        let sex = match validate_account_sex(sex) {
+            Ok(sex) => sex,
+            Err(message) => return self.respond_error(context, command, &message).await,
+        };
 
-    let birthdate = birthdate.trim();
-    let birthdate_is_valid = if birthdate.len() == 10 {
-        let parts = birthdate.split('-').collect::<Vec<_>>();
+        let birthdate = birthdate.trim();
+        let birthdate_is_valid = if birthdate.len() == 10 {
+            let parts = birthdate.split('-').collect::<Vec<_>>();
 
-        if parts.len() == 3
-            && parts[0].len() == 4
-            && parts[1].len() == 2
-            && parts[2].len() == 2
-        {
-            match (
-                parts[0].parse::<u16>(),
-                parts[1].parse::<u8>(),
-                parts[2].parse::<u8>(),
-            ) {
-                (Ok(year), Ok(month), Ok(day)) => {
-                    let leap_year = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
-                    let max_day = match month {
-                        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-                        4 | 6 | 9 | 11 => 30,
-                        2 if leap_year => 29,
-                        2 => 28,
-                        _ => 0,
-                    };
+            if parts.len() == 3 && parts[0].len() == 4 && parts[1].len() == 2 && parts[2].len() == 2
+            {
+                match (
+                    parts[0].parse::<u16>(),
+                    parts[1].parse::<u8>(),
+                    parts[2].parse::<u8>(),
+                ) {
+                    (Ok(year), Ok(month), Ok(day)) => {
+                        let leap_year = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+                        let max_day = match month {
+                            1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+                            4 | 6 | 9 | 11 => 30,
+                            2 if leap_year => 29,
+                            2 => 28,
+                            _ => 0,
+                        };
 
-                    year >= 1900 && max_day > 0 && day >= 1 && day <= max_day
+                        year >= 1900 && max_day > 0 && day >= 1 && day <= max_day
+                    }
+                    _ => false,
                 }
-                _ => false,
+            } else {
+                false
             }
         } else {
             false
+        };
+
+        if !birthdate_is_valid {
+            return self
+                .respond_error(
+                    context,
+                    command,
+                    "La date de naissance doit être au format `YYYY-MM-DD`.",
+                )
+                .await;
         }
-    } else {
-        false
-    };
 
-    if !birthdate_is_valid {
-        return self
-            .respond_error(
-                context,
-                command,
-                "La date de naissance doit être au format `YYYY-MM-DD`.",
+        let birthdate = birthdate.to_string();
+
+        let email = match validate_account_email(string_option(command, "email")) {
+            Ok(email) => email,
+            Err(message) => return self.respond_error(context, command, &message).await,
+        };
+
+        if self.state.database.account_userid_exists(&username).await? {
+            return self
+                .respond_error(
+                    context,
+                    command,
+                    &format!("Le compte `{username}` existe déjà."),
+                )
+                .await;
+        }
+
+        let account = self
+            .state
+            .database
+            .create_account(
+                &username,
+                &password,
+                self.state.config.account_commands.password_mode,
+                &sex,
+                &birthdate,
+                &email,
             )
-            .await;
-    }
+            .await?;
 
-    let birthdate = birthdate.to_string();
-
-    let email = match validate_account_email(string_option(command, "email")) {
-        Ok(email) => email,
-        Err(message) => return self.respond_error(context, command, &message).await,
-    };
-
-    if self.state.database.account_userid_exists(&username).await? {
-        return self
-            .respond_error(
-                context,
-                command,
-                &format!("Le compte `{username}` existe déjà."),
-            )
-            .await;
-    }
-
-    let account = self
-        .state
-        .database
-        .create_account(
-            &username,
-            &password,
-            self.state.config.account_commands.password_mode,
-            &sex,
-            &birthdate,
-            &email,
+        self.respond_embed(
+            context,
+            command,
+            embeds::account_created_embed(&account),
+            true,
         )
-        .await?;
-
-    self.respond_embed(
-        context,
-        command,
-        embeds::account_created_embed(&account),
-        true,
-    )
-    .await
-}
+        .await
+    }
 
     async fn handle_topzeny(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
         let (display_limit, query_limit) = self.list_limits(command);

@@ -86,47 +86,35 @@ fn createaccount_command() -> CreateCommand {
     CreateCommand::new("createaccount")
         .description("Créer un compte rAthena")
         .add_option(
+            CreateCommandOption::new(CommandOptionType::String, "username", "Nom du compte")
+                .required(true),
+        )
+        .add_option(
             CreateCommandOption::new(
                 CommandOptionType::String,
-                "username",
-            "Nom du compte",
+                "password",
+                "Mot de passe du compte",
+            )
+            .required(true),
         )
-        .required(true),
-    )
-    .add_option(
-        CreateCommandOption::new(
-            CommandOptionType::String,
-            "password",
-            "Mot de passe du compte",
+        .add_option(
+            CreateCommandOption::new(CommandOptionType::String, "sex", "Sexe du compte")
+                .required(true)
+                .add_string_choice("Homme", "M")
+                .add_string_choice("Femme", "F"),
         )
-        .required(true),
-    )
-    .add_option(
-        CreateCommandOption::new(
-            CommandOptionType::String,
-            "sex",
-            "Sexe du compte",
+        .add_option(
+            CreateCommandOption::new(
+                CommandOptionType::String,
+                "birthdate",
+                "Date de naissance au format YYYY-MM-DD, exemple : 1998-07-14",
+            )
+            .required(true),
         )
-        .required(true)
-        .add_string_choice("Homme", "M")
-        .add_string_choice("Femme", "F"),
-    )
-    .add_option(
-        CreateCommandOption::new(
-            CommandOptionType::String,
-            "birthdate",
-            "Date de naissance au format YYYY-MM-DD, exemple : 1998-07-14",
+        .add_option(
+            CreateCommandOption::new(CommandOptionType::String, "email", "Email du compte")
+                .required(false),
         )
-        .required(true),
-    )
-    .add_option(
-        CreateCommandOption::new(
-            CommandOptionType::String,
-            "email",
-            "Email du compte",
-        )
-        .required(false),
-    )
 }
 
 fn topzeny_command() -> CreateCommand {
