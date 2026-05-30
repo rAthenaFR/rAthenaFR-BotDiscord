@@ -16,7 +16,7 @@ Le bot expose des commandes slash en lecture seule pour consulter l’état du s
 
 ## Objectif
 
-rAthenaFR est un compagnon Discord pour le projet rAthena. Il ne remplace pas rAthena, FluxCP ou un panel d’administration. Il lit uniquement la base SQL et affiche des informations utiles dans Discord.
+rAthenaFR Discord Bot est un compagnon Discord pour le projet rAthena. Il ne remplace pas rAthena, FluxCP ou un panel d’administration. Il lit uniquement la base SQL et affiche des informations utiles dans Discord.
 
 ## Principes
 
