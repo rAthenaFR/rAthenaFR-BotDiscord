@@ -28,42 +28,6 @@ rAthenaFR Discord Bot est un compagnon Discord pour le projet rAthena. Il ne rem
 - exécution locale ou Docker ;
 - compatible MariaDB/MySQL.
 
-## Commandes principales
-
-| Commande | Rôle |
-|---|---|
-| `/status` | État des services rAthena et compteurs SQL. |
-| `/online` | Personnages connectés. |
-| `/top` | Classement par niveau. |
-| `/topzeny` | Classement zeny. |
-| `/player` | Profil d’un personnage. |
-| `/search` | Recherche partielle de personnages. |
-| `/guilds` | Classement des guildes. |
-| `/guild` | Détail d’une guilde. |
-| `/guildmembers` | Membres d’une guilde. |
-| `/classes` | Répartition par classes. |
-| `/mapstats` | Répartition par cartes. |
-| `/maponline` | Personnages connectés sur une carte. |
-| `/party` | Détail d’un groupe. |
-| `/partymembers` | Membres d’un groupe. |
-| `/homunculus` | Homoncule d’un personnage. |
-| `/pet` | Familier d’un personnage. |
-| `/zeny` | Statistiques zeny visibles. |
-| `/castles` | Liste des châteaux. |
-| `/castle` | Détail d’un château. |
-| `/guildalliances` | Alliances et oppositions d’une guilde. |
-| `/guildskills` | Compétences d’une guilde. |
-| `/homunculustop` | Classement des homoncules. |
-| `/pettop` | Classement des familiers. |
-| `/queststats` | Statistiques d’une quête. |
-| `/whosell` | Boutiques vendant un objet. |
-| `/whobuy` | Boutiques achetant un objet. |
-| `/market` | Vue achat/vente d’un objet. |
-| `/venders` | Boutiques de vente actives. |
-| `/buyers` | Boutiques d’achat actives. |
-
-Commandes staff : `/charquests`, `/charequipment`, `/charinventory`, `/itemcount`, `/itemowners`, `/accountoverview`, `/banlist`, `/accountchars`, `/accountstatus`.
-
 ## Documentation
 
 | Document | Description |
