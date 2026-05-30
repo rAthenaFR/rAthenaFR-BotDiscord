@@ -29,6 +29,10 @@ rAthenaFR Discord Bot est un compagnon Discord pour le projet rAthena. Il ne rem
 - exécution locale ou Docker ;
 - compatible MariaDB/MySQL.
 
+> [!WARNING]
+> Les commandes Discord de **rAthenaFR** sont actuellement en phase de prototype.
+> Certaines commandes peuvent être modifiées, renommées ou supprimées dans de futures versions.
+
 ## Documentation
 
 | Document | Description |
