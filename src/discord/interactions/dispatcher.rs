@@ -26,8 +26,8 @@ const MARKET_CACHE_TTL_SECONDS: u64 = 20;
 
 #[cfg(test)]
 const CACHED_COMMAND_NAMES: &[&str] = &[
-    "status", "guildes", "classes", "mapstats", "castles", "whosell", "whobuy", "market", "venders",
-    "buyers",
+    "status", "guildes", "classes", "mapstats", "castles", "whosell", "whobuy", "market",
+    "venders", "buyers",
 ];
 
 const BUYING_STORE_TABLES: &[DatabaseTable] =
@@ -560,7 +560,11 @@ impl Handler {
     ) -> Result<()> {
         let Some(character) = string_option(command, "character") else {
             return self
-                .respond_error(context, command, "Option obligatoire manquante : character.")
+                .respond_error(
+                    context,
+                    command,
+                    "Option obligatoire manquante : character.",
+                )
                 .await;
         };
 
@@ -591,7 +595,11 @@ impl Handler {
     async fn handle_pet(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
         let Some(character) = string_option(command, "character") else {
             return self
-                .respond_error(context, command, "Option obligatoire manquante : character.")
+                .respond_error(
+                    context,
+                    command,
+                    "Option obligatoire manquante : character.",
+                )
                 .await;
         };
 
@@ -660,7 +668,11 @@ impl Handler {
     async fn handle_castle(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
         let Some(castle_id) = non_negative_integer_option(command, "castle_id") else {
             return self
-                .respond_error(context, command, "Option obligatoire manquante : castle_id.")
+                .respond_error(
+                    context,
+                    command,
+                    "Option obligatoire manquante : castle_id.",
+                )
                 .await;
         };
 
@@ -969,7 +981,11 @@ impl Handler {
 
         let Some(character) = string_option(command, "character") else {
             return self
-                .respond_error(context, command, "Option obligatoire manquante : character.")
+                .respond_error(
+                    context,
+                    command,
+                    "Option obligatoire manquante : character.",
+                )
                 .await;
         };
 
@@ -1009,7 +1025,11 @@ impl Handler {
 
         let Some(character) = string_option(command, "character") else {
             return self
-                .respond_error(context, command, "Option obligatoire manquante : character.")
+                .respond_error(
+                    context,
+                    command,
+                    "Option obligatoire manquante : character.",
+                )
                 .await;
         };
 
@@ -1049,7 +1069,11 @@ impl Handler {
 
         let Some(character) = string_option(command, "character") else {
             return self
-                .respond_error(context, command, "Option obligatoire manquante : character.")
+                .respond_error(
+                    context,
+                    command,
+                    "Option obligatoire manquante : character.",
+                )
                 .await;
         };
 
@@ -1159,7 +1183,11 @@ impl Handler {
 
         let Some(account_id) = positive_integer_option(command, "account_id") else {
             return self
-                .respond_error(context, command, "Option obligatoire manquante : account_id.")
+                .respond_error(
+                    context,
+                    command,
+                    "Option obligatoire manquante : account_id.",
+                )
                 .await;
         };
 
@@ -1211,7 +1239,11 @@ impl Handler {
 
         let Some(account_id) = positive_integer_option(command, "account_id") else {
             return self
-                .respond_error(context, command, "Option obligatoire manquante : account_id.")
+                .respond_error(
+                    context,
+                    command,
+                    "Option obligatoire manquante : account_id.",
+                )
                 .await;
         };
 
@@ -1244,7 +1276,11 @@ impl Handler {
 
         let Some(account_id) = positive_integer_option(command, "account_id") else {
             return self
-                .respond_error(context, command, "Option obligatoire manquante : account_id.")
+                .respond_error(
+                    context,
+                    command,
+                    "Option obligatoire manquante : account_id.",
+                )
                 .await;
         };
 

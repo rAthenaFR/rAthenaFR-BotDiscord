@@ -254,9 +254,9 @@ impl CacheConfig {
 
 fn parse_discord_application_id() -> Result<u64> {
     match optional("DISCORD_APPLICATION_ID") {
-        Some(value) => value
-            .parse::<u64>()
-            .with_context(|| "Valeur invalide pour la variable d’environnement : DISCORD_APPLICATION_ID"),
+        Some(value) => value.parse::<u64>().with_context(|| {
+            "Valeur invalide pour la variable d’environnement : DISCORD_APPLICATION_ID"
+        }),
         None => parse_required("DISCORD_CLIENT_ID"),
     }
 }

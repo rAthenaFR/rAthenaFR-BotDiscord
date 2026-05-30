@@ -19,13 +19,21 @@ pub(super) fn character_lookup_option() -> CreateCommandOption {
 }
 
 pub(super) fn guild_name_option() -> CreateCommandOption {
-    CreateCommandOption::new(CommandOptionType::String, "name", "Nom de la guilde à rechercher.")
-        .required(true)
+    CreateCommandOption::new(
+        CommandOptionType::String,
+        "name",
+        "Nom de la guilde à rechercher.",
+    )
+    .required(true)
 }
 
 pub(super) fn party_name_option() -> CreateCommandOption {
-    CreateCommandOption::new(CommandOptionType::String, "name", "Nom du groupe à rechercher.")
-        .required(true)
+    CreateCommandOption::new(
+        CommandOptionType::String,
+        "name",
+        "Nom du groupe à rechercher.",
+    )
+    .required(true)
 }
 
 pub(super) fn account_id_option() -> CreateCommandOption {

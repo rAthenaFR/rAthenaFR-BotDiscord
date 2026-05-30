@@ -128,4 +128,4 @@ Change le mot de passe avant d’exécuter le script SQL.
 
 ## Licence
 
-Ce projet est distribué sous licence GPL-3.0-only. Le projet Athena doit rester conforme aux lois et licences applicables autour de Ragnarok Online, rAthena, FluxCP et des contenus utilisés.
+Ce projet est distribué sous licence GPL-3.0-only. Le projet rAthenaFR doit rester conforme aux lois et licences applicables autour de Ragnarok Online, rAthena, FluxCP et des contenus utilisés.

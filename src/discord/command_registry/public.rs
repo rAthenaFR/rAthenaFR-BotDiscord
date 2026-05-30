@@ -39,7 +39,8 @@ pub(super) fn command_definitions() -> Vec<CreateCommand> {
 }
 
 fn status_command() -> CreateCommand {
-    CreateCommand::new("status").description("Affiche l’état des services et les compteurs de la base de données.")
+    CreateCommand::new("status")
+        .description("Affiche l’état des services et les compteurs de la base de données.")
 }
 
 fn online_command() -> CreateCommand {
@@ -101,13 +102,17 @@ fn guildmembers_command() -> CreateCommand {
 
 fn classes_command() -> CreateCommand {
     CreateCommand::new("classes")
-        .description("Affiche la répartition des personnages visibles par classe depuis la base de données.")
+        .description(
+            "Affiche la répartition des personnages visibles par classe depuis la base de données.",
+        )
         .add_option(limit_option())
 }
 
 fn mapstats_command() -> CreateCommand {
     CreateCommand::new("mapstats")
-        .description("Affiche la répartition des personnages visibles par carte depuis la base de données.")
+        .description(
+            "Affiche la répartition des personnages visibles par carte depuis la base de données.",
+        )
         .add_option(
             CreateCommandOption::new(
                 CommandOptionType::Boolean,
@@ -121,7 +126,9 @@ fn mapstats_command() -> CreateCommand {
 
 fn maponline_command() -> CreateCommand {
     CreateCommand::new("maponline")
-        .description("Liste les personnages connectés sur une carte précise depuis la base de données.")
+        .description(
+            "Liste les personnages connectés sur une carte précise depuis la base de données.",
+        )
         .add_option(
             CreateCommandOption::new(
                 CommandOptionType::String,
@@ -135,7 +142,9 @@ fn maponline_command() -> CreateCommand {
 
 fn party_command() -> CreateCommand {
     CreateCommand::new("party")
-        .description("Affiche les informations détaillées d’un groupe rAthenaFR depuis la base de données.")
+        .description(
+            "Affiche les informations détaillées d’un groupe rAthenaFR depuis la base de données.",
+        )
         .add_option(party_name_option())
 }
 
@@ -159,7 +168,8 @@ fn pet_command() -> CreateCommand {
 }
 
 fn zeny_command() -> CreateCommand {
-    CreateCommand::new("zeny").description("Affiche les statistiques visibles de zeny depuis la base de données.")
+    CreateCommand::new("zeny")
+        .description("Affiche les statistiques visibles de zeny depuis la base de données.")
 }
 
 fn castles_command() -> CreateCommand {

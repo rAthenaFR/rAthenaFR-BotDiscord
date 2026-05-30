@@ -67,7 +67,11 @@ pub fn status_embed(status: &DatabaseStatus, services: &[RAthenaFrServiceStatus]
         color,
     )
     .field("Services rAthenaFR", service_status_lines(services), false)
-    .field("Base de données", format!("`{}`", status.database_name), true)
+    .field(
+        "Base de données",
+        format!("`{}`", status.database_name),
+        true,
+    )
     .field("MariaDB", format!("`{}`", status.database_engine), true)
     .field(
         "Personnages connectés",
@@ -104,7 +108,11 @@ pub fn online_embed(characters: &[CharacterSummary], requested_limit: u32) -> Cr
         "Personnages rAthenaFR connectés",
         "Personnages visibles connectés depuis la base de données.",
     )
-    .field("Résumé", list_summary(&list, "personnages connectés"), false)
+    .field(
+        "Résumé",
+        list_summary(&list, "personnages connectés"),
+        false,
+    )
     .field("Personnages", list.value, false)
 }
 
@@ -142,7 +150,10 @@ pub fn search_embed(
 
 pub fn ranking_embed(entries: &[RankingEntry], requested_limit: u32) -> CreateEmbed {
     if entries.is_empty() {
-        return warning_embed("Classement des personnages rAthenaFR", "Aucun personnage trouvé.");
+        return warning_embed(
+            "Classement des personnages rAthenaFR",
+            "Aucun personnage trouvé.",
+        );
     }
 
     let list = limited_list(entries, requested_limit, |_index, entry| {
@@ -157,9 +168,16 @@ pub fn ranking_embed(entries: &[RankingEntry], requested_limit: u32) -> CreateEm
         )
     });
 
-    info_embed("Classement des personnages rAthenaFR", "Meilleurs personnages par niveau.")
-        .field("Résumé", list_summary(&list, "entrées de classement"), false)
-        .field("Classement", list.value, false)
+    info_embed(
+        "Classement des personnages rAthenaFR",
+        "Meilleurs personnages par niveau.",
+    )
+    .field(
+        "Résumé",
+        list_summary(&list, "entrées de classement"),
+        false,
+    )
+    .field("Classement", list.value, false)
 }
 
 pub fn top_zeny_embed(entries: &[ZenyRankingEntry], requested_limit: u32) -> CreateEmbed {
@@ -300,7 +318,10 @@ pub fn guild_members_embed(
     if members.is_empty() {
         return warning_embed(
             "Membres de guilde rAthenaFR",
-            format!("Aucun membre visible trouvé pour la guilde `{}`.", guild_name),
+            format!(
+                "Aucun membre visible trouvé pour la guilde `{}`.",
+                guild_name
+            ),
         );
     }
 
@@ -360,7 +381,10 @@ pub fn map_stats_embed(
     requested_limit: u32,
 ) -> CreateEmbed {
     if entries.is_empty() {
-        return warning_embed("Statistiques de cartes rAthenaFR", "Aucune donnée de carte visible trouvée.");
+        return warning_embed(
+            "Statistiques de cartes rAthenaFR",
+            "Aucune donnée de carte visible trouvée.",
+        );
     }
 
     let mode = if online_only {
@@ -377,7 +401,10 @@ pub fn map_stats_embed(
 
     info_embed(
         "Statistiques de cartes rAthenaFR",
-        format!("Répartition des cartes depuis `char.last_map` pour {}.", mode),
+        format!(
+            "Répartition des cartes depuis `char.last_map` pour {}.",
+            mode
+        ),
     )
     .field("Résumé", list_summary(&list, "lignes de cartes"), false)
     .field("Cartes", list.value, false)
@@ -411,7 +438,11 @@ pub fn map_online_embed(
         "Personnages connectés par carte rAthenaFR",
         format!("Personnages visibles connectés sur `{}`.", map),
     )
-    .field("Résumé", list_summary(&list, "personnages connectés"), false)
+    .field(
+        "Résumé",
+        list_summary(&list, "personnages connectés"),
+        false,
+    )
     .field("Personnages", list.value, false)
     .field("Source", "`char`, `login`", false)
 }
@@ -456,7 +487,10 @@ pub fn party_members_embed(
     if members.is_empty() {
         return warning_embed(
             "Membres de groupe rAthenaFR",
-            format!("Aucun membre visible trouvé pour le groupe `{}`.", party_name),
+            format!(
+                "Aucun membre visible trouvé pour le groupe `{}`.",
+                party_name
+            ),
         );
     }
 
@@ -530,7 +564,11 @@ pub fn homunculus_not_found_embed(character: &str) -> CreateEmbed {
 
 pub fn pet_embed(pet: &PetProfile) -> CreateEmbed {
     let incubated = if pet.incubated { "Oui" } else { "Non" };
-    let autofeed = if pet.autofeed { "Activé" } else { "Désactivé" };
+    let autofeed = if pet.autofeed {
+        "Activé"
+    } else {
+        "Désactivé"
+    };
 
     success_embed(
         "Profil de familier rAthenaFR",
@@ -708,7 +746,10 @@ pub fn guild_skills_embed(
     }
 
     let list = limited_list(skills, requested_limit, |_index, skill| {
-        format!("ID compétence `{}` — Niveau `{}`", skill.skill_id, skill.level)
+        format!(
+            "ID compétence `{}` — Niveau `{}`",
+            skill.skill_id, skill.level
+        )
     });
 
     info_embed(
@@ -755,7 +796,10 @@ pub fn homunculus_top_embed(
 
 pub fn pet_top_embed(entries: &[PetRankingEntry], requested_limit: u32) -> CreateEmbed {
     if entries.is_empty() {
-        return warning_embed("Classement des familiers rAthenaFR", "Aucun familier visible trouvé.");
+        return warning_embed(
+            "Classement des familiers rAthenaFR",
+            "Aucun familier visible trouvé.",
+        );
     }
 
     let list = limited_list(entries, requested_limit, |_index, entry| {
@@ -793,7 +837,10 @@ pub fn quest_stats_embed(stats: &QuestStats) -> CreateEmbed {
 
     info_embed(
         "Statistiques de quête rAthenaFR",
-        format!("Statistiques globales pour la quête ID `{}`.", stats.quest_id),
+        format!(
+            "Statistiques globales pour la quête ID `{}`.",
+            stats.quest_id
+        ),
     )
     .field("Personnages", format!("`{}`", stats.total_characters), true)
     .field("État 0", format!("`{}`", stats.state_0), true)
@@ -838,9 +885,16 @@ pub fn account_characters_embed(
 
     info_embed(
         "Personnages du compte rAthenaFR",
-        format!("Liste staff uniquement des personnages du compte `{}`.", account_id),
+        format!(
+            "Liste staff uniquement des personnages du compte `{}`.",
+            account_id
+        ),
     )
-    .field("Résumé", list_summary(&list, "personnages du compte"), false)
+    .field(
+        "Résumé",
+        list_summary(&list, "personnages du compte"),
+        false,
+    )
     .field("Personnages", list.value, false)
     .field("Source", "`login`, `char`, `guild`", false)
 }
@@ -858,7 +912,11 @@ pub fn account_status_embed(status: &AccountStatus) -> CreateEmbed {
     .field("Sexe", format!("`{}`", status.sex), true)
     .field("ID groupe", format!("`{}`", status.group_id), true)
     .field("État", account_state(status.state), true)
-    .field("Nombre de connexions", format!("`{}`", status.logincount), true)
+    .field(
+        "Nombre de connexions",
+        format!("`{}`", status.logincount),
+        true,
+    )
     .field(
         "Personnages",
         format!(
@@ -886,12 +944,12 @@ pub fn account_status_embed(status: &AccountStatus) -> CreateEmbed {
             .unwrap_or("Jamais"),
         true,
     )
-    .field("Fin de bannissement", unix_time_field(status.unban_time), true)
     .field(
-        "Expiration",
-        unix_time_field(status.expiration_time),
+        "Fin de bannissement",
+        unix_time_field(status.unban_time),
         true,
     )
+    .field("Expiration", unix_time_field(status.expiration_time), true)
     .field("Source", "`login`, `char`", false)
 }
 
@@ -910,7 +968,10 @@ pub fn character_quests_embed(
     if quests.is_empty() {
         return warning_embed(
             "Quêtes du personnage rAthenaFR",
-            format!("Aucune entrée de quête trouvée pour le personnage `{}`.", character),
+            format!(
+                "Aucune entrée de quête trouvée pour le personnage `{}`.",
+                character
+            ),
         );
     }
 
@@ -943,7 +1004,10 @@ pub fn character_equipment_embed(
     if items.is_empty() {
         return warning_embed(
             "Équipement du personnage rAthenaFR",
-            format!("Aucun objet équipé trouvé pour le personnage `{}`.", character),
+            format!(
+                "Aucun objet équipé trouvé pour le personnage `{}`.",
+                character
+            ),
         );
     }
 
@@ -977,7 +1041,10 @@ pub fn character_inventory_embed(
 
     info_embed(
         "Inventaire du personnage rAthenaFR",
-        format!("Objets d’inventaire staff uniquement pour **{}**.", character),
+        format!(
+            "Objets d’inventaire staff uniquement pour **{}**.",
+            character
+        ),
     )
     .field("Résumé", list_summary(&list, "objets d’inventaire"), false)
     .field("Objets", list.value, false)
@@ -987,7 +1054,10 @@ pub fn character_inventory_embed(
 pub fn item_count_embed(summary: &ItemCountSummary) -> CreateEmbed {
     info_embed(
         "Comptage d’objet rAthenaFR",
-        format!("Comptage global staff uniquement pour l’objet ID `{}`.", summary.item_id),
+        format!(
+            "Comptage global staff uniquement pour l’objet ID `{}`.",
+            summary.item_id
+        ),
     )
     .field(
         "Inventaire",
@@ -1050,9 +1120,16 @@ pub fn item_owners_embed(
 
     info_embed(
         "Propriétaires d’objet rAthenaFR",
-        format!("Propriétaires staff uniquement pour l’objet ID `{}`.", item_id),
+        format!(
+            "Propriétaires staff uniquement pour l’objet ID `{}`.",
+            item_id
+        ),
     )
-    .field("Résumé", list_summary(&list, "propriétaires d’objet"), false)
+    .field(
+        "Résumé",
+        list_summary(&list, "propriétaires d’objet"),
+        false,
+    )
     .field("Propriétaires", list.value, false)
     .field(
         "Source",
@@ -1114,7 +1191,11 @@ pub fn account_overview_embed(
         list_summary(&character_list, "personnages du compte"),
         false,
     )
-    .field("Liste des personnages", trim_embed_value(character_lines), false)
+    .field(
+        "Liste des personnages",
+        trim_embed_value(character_lines),
+        false,
+    )
     .field("Source", "`login`, `char`, `guild`", false)
 }
 
@@ -1157,7 +1238,10 @@ pub fn who_sell_embed(
     if sellers.is_empty() {
         return warning_embed(
             "Vendeurs du marché",
-            format!("Aucune boutique de vente active ne vend l’objet `{}`.", item_id),
+            format!(
+                "Aucune boutique de vente active ne vend l’objet `{}`.",
+                item_id
+            ),
         );
     }
 
@@ -1192,7 +1276,10 @@ pub fn who_buy_embed(item_id: i64, buyers: &[MarketBuyEntry], requested_limit: u
     if buyers.is_empty() {
         return warning_embed(
             "Acheteurs du marché",
-            format!("Aucune boutique d’achat active n’achète l’objet `{}`.", item_id),
+            format!(
+                "Aucune boutique d’achat active n’achète l’objet `{}`.",
+                item_id
+            ),
         );
     }
 
@@ -1243,15 +1330,27 @@ pub fn market_embed(overview: &MarketOverview) -> CreateEmbed {
         format!("`{}`", format_number(overview.sell_amount)),
         true,
     )
-    .field("Prix de vente le plus bas", format!("`{}`", lowest_sell), true)
+    .field(
+        "Prix de vente le plus bas",
+        format!("`{}`", lowest_sell),
+        true,
+    )
     .field("Acheteurs", format!("`{}`", overview.buyers), true)
     .field(
         "Quantité en achat",
         format!("`{}`", format_number(overview.buy_amount)),
         true,
     )
-    .field("Prix d’achat le plus élevé", format!("`{}`", highest_buy), true)
-    .field("Source", "Tables natives des boutiques de vente et d’achat", false)
+    .field(
+        "Prix d’achat le plus élevé",
+        format!("`{}`", highest_buy),
+        true,
+    )
+    .field(
+        "Source",
+        "Tables natives des boutiques de vente et d’achat",
+        false,
+    )
 }
 
 pub fn venders_embed(stores: &[VendingStoreEntry], requested_limit: u32) -> CreateEmbed {
@@ -1296,7 +1395,10 @@ pub fn venders_embed(stores: &[VendingStoreEntry], requested_limit: u32) -> Crea
 
 pub fn buyers_embed(stores: &[BuyingStoreEntry], requested_limit: u32) -> CreateEmbed {
     if stores.is_empty() {
-        return warning_embed("Boutiques d’achat actives", "Aucune boutique d’achat active trouvée.");
+        return warning_embed(
+            "Boutiques d’achat actives",
+            "Aucune boutique d’achat active trouvée.",
+        );
     }
 
     let list = limited_list(stores, requested_limit, |_index, store| {
@@ -1545,7 +1647,9 @@ fn list_summary(list: &LimitedList, noun: &str) -> String {
     let hidden_by_row_limit = list.available_count > list.row_limit;
     let hidden_by_embed_limit = list.displayed_count < list.available_count.min(list.row_limit);
     let hidden_reason = match (hidden_by_row_limit, hidden_by_embed_limit) {
-        (true, true) => Some("la limite d’affichage configurée et les limites de champ des embeds Discord"),
+        (true, true) => {
+            Some("la limite d’affichage configurée et les limites de champ des embeds Discord")
+        }
         (true, false) => Some("la limite d’affichage configurée"),
         (false, true) => Some("les limites de champ des embeds Discord"),
         (false, false) => None,
