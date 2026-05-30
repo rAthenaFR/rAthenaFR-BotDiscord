@@ -21,7 +21,7 @@ Le bot expose des commandes slash en lecture seule pour consulter l’état du s
 
 ## Objectif
 
-rAthenaFR est un compagnon Discord pour le projet Athena. Il ne remplace pas rAthena, FluxCP ou un panel d’administration. Il lit uniquement la base SQL et affiche des informations utiles dans Discord.
+rAthenaFR est un compagnon Discord pour le projet rAthena. Il ne remplace pas rAthena, FluxCP ou un panel d’administration. Il lit uniquement la base SQL et affiche des informations utiles dans Discord.
 
 ## Principes
 
@@ -62,69 +62,21 @@ rAthenaFR est un compagnon Discord pour le projet Athena. Il ne remplace pas rAt
 
 Commandes staff : `/charquests`, `/charequipment`, `/charinventory`, `/itemcount`, `/itemowners`, `/accountoverview`, `/banlist`, `/accountchars`, `/accountstatus`.
 
-## Installation rapide
-
-```bash
-cp .env.example .env
-```
-
-Renseigne au minimum :
-
-```env
-DISCORD_TOKEN=replace_me
-DISCORD_CLIENT_ID=replace_me
-DISCORD_GUILD_ID=replace_me
-RATHENAFR_DB_HOST=127.0.0.1
-RATHENAFR_DB_PORT=3306
-RATHENAFR_DB_NAME=ragnarok
-RATHENAFR_DB_USER=rathenafr_bot
-RATHENAFR_DB_PASSWORD=replace_me
-```
-
-Déployer les commandes slash :
-
-```bash
-cargo run -- --deploy
-```
-
-Lancer le bot :
-
-```bash
-cargo run
-```
-
-## Docker
-
-```bash
-cp .env.docker.example .env
-docker compose up -d --build
-```
-
-Le `docker-compose.yml` utilise le réseau Docker externe `athena-network`. La base de données ne doit pas être exposée publiquement.
-
-## Sécurité
-
-Le bot doit utiliser un utilisateur SQL dédié avec uniquement `SELECT` :
-
-```bash
-mysql -u root -p < sql/create-readonly-user.sql
-```
-
-Change le mot de passe avant d’exécuter le script SQL.
-
 ## Documentation
 
-- `docs/INSTALLATION_FR.md`
-- `docs/CONFIGURATION_FR.md`
-- `docs/COMMANDS_FR.md`
-- `docs/DOCKER_FR.md`
-- `docs/DATABASE_FR.md`
-- `docs/SECURITY_FR.md`
-- `docs/TROUBLESHOOTING_FR.md`
-- `docs/ARCHITECTURE_FR.md`
-- `docs/DEVELOPMENT_FR.md`
-- `docs/CONTRIBUTOR_GUIDE_FR.md`
-- `docs/RELEASE_FR.md`
+| Document | Description |
+|---|---|
+| [`docs/CONTRIBUTOR_GUIDE_FR.md`](docs/CONTRIBUTOR_GUIDE_FR.md) | Cartographie des contributeurs, flux de projet et processus de gestion des changements sécurisés.|
+| [`docs/INSTALLATION_FR.md`](docs/INSTALLATION_FR.md) | Installation et première configuration. |
+| [`docs/CONFIGURATION_FR.md`](docs/CONFIGURATION_FR.md) | Variables d'environnement et configuration d'exécution. |
+| [`docs/COMMANDS_FR.md`](docs/COMMANDS_FR.md) | Référence complète des commandes. |
+| [`docs/DATABASE_FR.md`](docs/DATABASE_FR.md) | Tables de base de données et étendue des requêtes. |
+| [`docs/DOCKER_FR.md`](docs/DOCKER_FR.md) | Déploiement Docker. |
+| [`docs/SECURITY_FR.md`](docs/SECURITY_FR.md) | Modèle de sécurité et autorisations recommandées. |
+| [`docs/TROUBLESHOOTING_FR.md`](docs/TROUBLESHOOTING_FR.md) | Problèmes courants et correctifs. |
+| [`docs/DEVELOPMENT_FR.md`](docs/DEVELOPMENT_FR.md) | Flux de travail de développement. |
+| [`docs/ARCHITECTURE_FR.md`](docs/ARCHITECTURE_FR.md) | Architecture interne. |
+| [`docs/RELEASE_FR.md`](docs/RELEASE_FR.md) | processus de libération. |
 
 ## Licence
 
