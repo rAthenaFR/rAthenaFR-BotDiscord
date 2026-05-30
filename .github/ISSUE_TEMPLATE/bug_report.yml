@@ -1,0 +1,30 @@
+name: Rapport de bug
+description: Signaler un problème avec rAthenaFR Discord Bot
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version du bot
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Que s’est-il passé ?
+      description: Décris le problème et le comportement attendu.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Retire les secrets avant de coller les logs.
+      render: shell
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environnement
+      description: Docker/local, OS, version MariaDB/MySQL, branche rAthenaFR.

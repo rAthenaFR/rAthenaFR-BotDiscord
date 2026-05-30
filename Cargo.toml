@@ -1,0 +1,43 @@
+[package]
+name = "rathenafr"
+version = "0.1.0"
+edition = "2021"
+autobins = false
+authors = ["rAthenaFR"]
+description = "Bot Discord à commandes slash pour les serveurs privés rAthena."
+license = "GPL-3.0-only"
+repository = "https://github.com/rAthenaFR/rAthenaFR-BotDiscord"
+readme = "README.md"
+keywords = ["rathenafr", "discord", "bot", "ragnarok", "rust"]
+categories = ["command-line-utilities"]
+
+[[bin]]
+name = "rathenafr-discord-bot"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0"
+dotenvy = "0.15"
+serenity = { version = "0.12", default-features = false, features = [
+  "builder",
+  "client",
+  "gateway",
+  "http",
+  "model",
+  "rustls_backend"
+] }
+sqlx = { version = "0.8", default-features = false, features = [
+  "mysql",
+  "runtime-tokio-rustls"
+] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time", "signal"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+urlencoding = "2.1"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

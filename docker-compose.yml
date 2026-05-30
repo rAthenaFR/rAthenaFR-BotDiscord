@@ -1,0 +1,28 @@
+services:
+  rathenafr-discord-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rathenafr-discord-bot:local
+    container_name: rathenafr-discord-bot
+    env_file:
+      - .env
+    environment:
+      RATHENAFR_DISCORD_BOT_ENV: /app/.env
+    volumes:
+      - ./.env:/app/.env:ro
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - athena-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  athena-network:
+    external: true
