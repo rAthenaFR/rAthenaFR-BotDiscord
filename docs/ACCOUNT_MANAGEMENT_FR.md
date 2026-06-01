@@ -2,7 +2,7 @@
 
 Documentation française de rAthenaFR Discord Bot pour le projet rAthena.
 
-Cette page couvre les commandes qui écrivent dans la base rAthena.
+Cette page couvre les commandes de gestion de comptes rAthena.
 
 > [!WARNING]
 > Ces commandes sortent du modèle lecture seule historique du bot. Active-les uniquement avec un utilisateur SQL dédié, des rôles Discord maîtrisés et des sauvegardes récentes.
@@ -11,9 +11,22 @@ Cette page couvre les commandes qui écrivent dans la base rAthena.
 
 | Commande | Écriture SQL | Accès Discord |
 |---|---:|---|
+| `/accountlist` | Aucune, lecture `login`/`char` | Staff/admin/owner configurés |
 | `/createaccount` | `INSERT` dans `login` | Publique, mais désactivée par défaut |
 | `/accountmanage action:edit` | `UPDATE` dans `login` | Staff/admin/owner configurés |
 | `/accountmanage action:delete` | `DELETE` sur les tables liées au compte | Staff/admin/owner configurés |
+
+## `/accountlist`
+
+La commande liste les comptes créés dans `login`, triés du plus récent au plus ancien par `account_id`.
+
+Options :
+
+- `page` : page à afficher, à partir de `1` ;
+- `limit` : nombre de comptes affichés par page, borné par la configuration du bot.
+
+> [!NOTE]
+> rAthena ne fournit pas toujours une date de création de compte dans `login`. Le tri par `account_id` sert donc d’ordre pratique pour afficher les comptes les plus récents en premier.
 
 ## `/createaccount`
 

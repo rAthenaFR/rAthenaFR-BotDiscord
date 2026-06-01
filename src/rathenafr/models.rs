@@ -289,6 +289,26 @@ pub struct AccountStatus {
 }
 
 #[derive(Debug, Clone)]
+pub struct AccountList {
+    pub total_accounts: i64,
+    pub page: u32,
+    pub per_page: u32,
+    pub offset: u32,
+    pub entries: Vec<AccountListEntry>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AccountListEntry {
+    pub account_id: i64,
+    pub userid: String,
+    pub sex: String,
+    pub group_id: i32,
+    pub state: i64,
+    pub characters: i64,
+    pub lastlogin: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct CreatedAccount {
     pub account_id: i64,
     pub userid: String,

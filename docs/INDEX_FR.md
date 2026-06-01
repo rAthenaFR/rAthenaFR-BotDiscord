@@ -15,7 +15,7 @@ Documentation française de rAthenaFR Discord Bot pour le projet rAthena.
 ## Utilisation
 
 - [Commandes Discord](COMMANDS_FR.md) : liste des commandes publiques et staff.
-- [Gestion de comptes](ACCOUNT_MANAGEMENT_FR.md) : création, édition et suppression complète de comptes.
+- [Gestion de comptes](ACCOUNT_MANAGEMENT_FR.md) : liste GM, création, édition et suppression complète de comptes.
 - [Base de données](DATABASE_FR.md) : tables utilisées et permissions SQL.
 - [Dépannage](TROUBLESHOOTING_FR.md) : erreurs courantes et corrections.
 

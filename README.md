@@ -40,7 +40,7 @@ rAthenaFR Discord Bot est un compagnon Discord pour le projet rAthena. Il ne rem
 
 | Document | Description |
 |---|---|
-| [`docs/ACCOUNT_MANAGEMENT_FR.md`](docs/ACCOUNT_MANAGEMENT_FR.md) | Création, édition et suppression complète de comptes. |
+| [`docs/ACCOUNT_MANAGEMENT_FR.md`](docs/ACCOUNT_MANAGEMENT_FR.md) | Liste GM, création, édition et suppression complète de comptes. |
 | [`docs/ARCHITECTURE_FR.md`](docs/ARCHITECTURE_FR.md) | Architecture interne. |
 | [`docs/COMMANDS_FR.md`](docs/COMMANDS_FR.md) | Référence complète des commandes. |
 | [`docs/CONFIGURATION_FR.md`](docs/CONFIGURATION_FR.md) | Variables d'environnement et configuration d'exécution. |

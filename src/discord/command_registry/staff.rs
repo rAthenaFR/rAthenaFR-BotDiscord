@@ -8,6 +8,7 @@ pub(super) fn command_definitions() -> Vec<CreateCommand> {
         charinventory_command(),
         itemcount_command(),
         itemowners_command(),
+        accountlist_command(),
         accountoverview_command(),
         accountmanage_command(),
         banlist_command(),
@@ -55,6 +56,21 @@ fn itemowners_command() -> CreateCommand {
             "Staff uniquement : liste les propriétaires visibles d’un objet dans l’inventaire.",
         )
         .add_option(item_id_option())
+        .add_option(limit_option())
+}
+
+fn accountlist_command() -> CreateCommand {
+    CreateCommand::new("accountlist")
+        .description("GM uniquement : liste les comptes créés dans la table login.")
+        .add_option(
+            CreateCommandOption::new(
+                CommandOptionType::Integer,
+                "page",
+                "Page à afficher, triée du plus récent au plus ancien.",
+            )
+            .min_int_value(1)
+            .required(false),
+        )
         .add_option(limit_option())
 }
 

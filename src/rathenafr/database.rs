@@ -1489,6 +1489,72 @@ impl RAthenaFrDatabase {
         }
     }
 
+    pub async fn account_list(&self, limit: u32, page: u32) -> Result<AccountList> {
+        let page = page.max(1);
+        let offset = page.saturating_sub(1).saturating_mul(limit);
+        let total_row = sqlx::query(
+            r#"
+            SELECT CAST(COUNT(*) AS SIGNED) AS total_accounts
+            FROM `login`
+            "#,
+        )
+        .fetch_one(&self.pool)
+        .await
+        .context("count accounts")?;
+
+        let rows = sqlx::query(
+            r#"
+            SELECT
+                CAST(l.account_id AS SIGNED) AS account_id,
+                l.userid,
+                l.sex,
+                CAST(l.group_id AS SIGNED) AS group_id,
+                CAST(l.state AS SIGNED) AS account_state,
+                DATE_FORMAT(l.lastlogin, '%Y-%m-%d %H:%i:%s') AS lastlogin,
+                CAST(COUNT(c.char_id) AS SIGNED) AS characters
+            FROM `login` l
+            LEFT JOIN `char` c ON c.account_id = l.account_id
+            GROUP BY
+                l.account_id,
+                l.userid,
+                l.sex,
+                l.group_id,
+                l.state,
+                l.lastlogin
+            ORDER BY l.account_id DESC
+            LIMIT ? OFFSET ?
+            "#,
+        )
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await
+        .context("fetch account list")?;
+
+        let entries = rows
+            .into_iter()
+            .map(|row| {
+                Ok(AccountListEntry {
+                    account_id: row.try_get("account_id")?,
+                    userid: row.try_get("userid")?,
+                    sex: row.try_get("sex")?,
+                    group_id: row.try_get("group_id")?,
+                    state: row.try_get("account_state")?,
+                    characters: row.try_get("characters")?,
+                    lastlogin: row.try_get("lastlogin")?,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(AccountList {
+            total_accounts: total_row.try_get("total_accounts")?,
+            page,
+            per_page: limit,
+            offset,
+            entries,
+        })
+    }
+
     pub async fn create_account(
         &self,
         userid: &str,

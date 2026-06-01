@@ -201,6 +201,7 @@ impl Handler {
             "charinventory" => self.handle_charinventory(context, command).await,
             "itemcount" => self.handle_itemcount(context, command).await,
             "itemowners" => self.handle_itemowners(context, command).await,
+            "accountlist" => self.handle_accountlist(context, command).await,
             "accountoverview" => self.handle_accountoverview(context, command).await,
             "accountmanage" => self.handle_accountmanage(context, command).await,
             "banlist" => self.handle_banlist(context, command).await,
@@ -369,10 +370,10 @@ impl Handler {
             },
         };
 
-        self.respond_embed(
+        self.respond_embeds(
             context,
             command,
-            embeds::search_embed(query, category.label(), &results, display_limit),
+            embeds::search_embeds(query, category.label(), &results, display_limit),
             false,
         )
         .await
@@ -1296,6 +1297,31 @@ impl Handler {
         .await
     }
 
+    async fn handle_accountlist(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        if !self.has_staff_access(command) {
+            return self
+                .respond_embed(context, command, embeds::staff_only_embed(), true)
+                .await;
+        }
+
+        let (display_limit, query_limit) = self.list_limits(command);
+        let page = positive_integer_option(command, "page").unwrap_or(1);
+        let page = u32::try_from(page).unwrap_or(u32::MAX);
+        let accounts = self.state.database.account_list(query_limit, page).await?;
+
+        self.respond_embed(
+            context,
+            command,
+            embeds::account_list_embed(&accounts, display_limit),
+            true,
+        )
+        .await
+    }
+
     async fn handle_accountoverview(
         &self,
         context: &Context,
@@ -1554,6 +1580,27 @@ impl Handler {
                 CreateInteractionResponse::Message(
                     CreateInteractionResponseMessage::new()
                         .embed(embed)
+                        .ephemeral(ephemeral),
+                ),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn respond_embeds(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+        embeds: Vec<serenity::all::CreateEmbed>,
+        ephemeral: bool,
+    ) -> Result<()> {
+        command
+            .create_response(
+                &context.http,
+                CreateInteractionResponse::Message(
+                    CreateInteractionResponseMessage::new()
+                        .embeds(embeds)
                         .ephemeral(ephemeral),
                 ),
             )
@@ -2126,6 +2173,7 @@ mod tests {
             "charequipment",
             "itemcount",
             "itemowners",
+            "accountlist",
             "accountmanage",
             "banlist",
         ];

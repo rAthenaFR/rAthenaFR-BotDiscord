@@ -83,7 +83,6 @@ pub fn status_embed(status: &DatabaseStatus, services: &[RAthenaFrServiceStatus]
     .field("Personnages", format!("`{}`", status.characters), true)
     .field("Comptes", format!("`{}`", status.accounts), true)
     .field("Guildes", format!("`{}`", status.guilds), true)
-    .field("Source", "`login`, `char`, `guild` + service checks", false)
 }
 
 pub fn online_embed(characters: &[CharacterSummary], requested_limit: u32) -> CreateEmbed {
@@ -118,47 +117,54 @@ pub fn online_embed(characters: &[CharacterSummary], requested_limit: u32) -> Cr
     .field("Personnages", list.value, false)
 }
 
-pub fn search_embed(
+pub fn search_embeds(
     query: &str,
     category_label: &str,
     results: &SearchResults,
     requested_limit: u32,
-) -> CreateEmbed {
+) -> Vec<CreateEmbed> {
     if results.is_empty() {
-        return warning_embed(
+        return vec![warning_embed(
             "Recherche rAthenaFR",
             format!(
                 "Aucun résultat ne correspond à `{}` dans `{}`.",
                 query, category_label
             ),
-        );
+        )];
     }
 
     let character_list = limited_list(&results.characters, requested_limit, |index, character| {
+        let image = character_image_url(character)
+            .map(|url| format!(" — [Image]({url})"))
+            .unwrap_or_default();
         format!(
-            "`{:>2}.` **{}** — Base `{}` / Job `{}` — {} — Carte `{}`",
+            "`{:>2}.` **{}** — Base `{}` / Job `{}` — {} — Carte `{}`{}",
             index + 1,
             character.name,
             character.base_level,
             character.job_level,
             job_name(character.class_id),
             character.map,
+            image,
         )
     });
     let item_list = limited_list(&results.items, requested_limit, |index, item| {
+        let image = item_image_url(item);
         format!(
-            "`{:>2}.` **{}** — ID `{}` — Type `{}` — `{}` — `{}`",
+            "`{:>2}.` **{}** — ID `{}` — Type `{}` — `{}` — `{}` — [Image]({})",
             index + 1,
             item.display_name,
             item.item_id,
             item.item_type,
             item.aegis_name,
             item.source_table,
+            image,
         )
     });
     let monster_list = limited_list(&results.monsters, requested_limit, |index, monster| {
+        let image = monster_image_url(monster);
         format!(
-            "`{:>2}.` **{}** — ID `{}` — Sprite `{}` — Niveau `{}` — HP `{}` — Table `{}`",
+            "`{:>2}.` **{}** — ID `{}` — Sprite `{}` — Niveau `{}` — HP `{}` — Table `{}` — [Image]({})",
             index + 1,
             monster.display_name,
             monster.monster_id,
@@ -166,6 +172,7 @@ pub fn search_embed(
             monster.level,
             format_number(monster.hp),
             monster.source_table,
+            image,
         )
     });
 
@@ -203,7 +210,79 @@ pub fn search_embed(
             .field("Monstres", monster_list.value, false);
     }
 
-    embed
+    let mut embeds = vec![embed];
+
+    if let Some(character) = results.characters.first() {
+        if let Some(url) = character_image_url(character) {
+            embeds.push(search_image_embed(
+                "Aperçu personnage",
+                &character.name,
+                format!(
+                    "{} — Base `{}` / Job `{}`",
+                    job_name(character.class_id),
+                    character.base_level,
+                    character.job_level
+                ),
+                url,
+            ));
+        }
+    }
+
+    if let Some(item) = results.items.first() {
+        embeds.push(search_image_embed(
+            "Aperçu objet",
+            &item.display_name,
+            format!("ID `{}` — Type `{}`", item.item_id, item.item_type),
+            item_image_url(item),
+        ));
+    }
+
+    if let Some(monster) = results.monsters.first() {
+        embeds.push(search_image_embed(
+            "Aperçu monstre",
+            &monster.display_name,
+            format!(
+                "ID `{}` — Niveau `{}` — HP `{}`",
+                monster.monster_id,
+                monster.level,
+                format_number(monster.hp)
+            ),
+            monster_image_url(monster),
+        ));
+    }
+
+    embeds
+}
+
+fn search_image_embed(
+    title: &str,
+    name: &str,
+    details: impl Into<String>,
+    image_url: String,
+) -> CreateEmbed {
+    info_embed(title, format!("**{}** — {}", name, details.into())).image(image_url)
+}
+
+fn character_image_url(character: &CharacterSummary) -> Option<String> {
+    job_sprite_name(character.class_id).map(ro_sprite_url)
+}
+
+fn item_image_url(item: &ItemSearchEntry) -> String {
+    format!(
+        "https://static.divine-pride.net/images/items/item/{}.png",
+        item.item_id
+    )
+}
+
+fn monster_image_url(monster: &MonsterSearchEntry) -> String {
+    ro_sprite_url(&monster.sprite)
+}
+
+fn ro_sprite_url(sprite_name: &str) -> String {
+    format!(
+        "https://nn.ai4rei.net/dev/npclist/i/{}.gif",
+        urlencoding::encode(sprite_name.trim())
+    )
 }
 
 pub fn ranking_embed(entries: &[RankingEntry], requested_limit: u32) -> CreateEmbed {
@@ -430,7 +509,6 @@ pub fn classes_embed(entries: &[ClassDistributionEntry], requested_limit: u32) -
     )
     .field("Résumé", list_summary(&list, "lignes de classes"), false)
     .field("Classes", list.value, false)
-    .field("Source", "`char`, `login`", false)
 }
 
 pub fn map_stats_embed(
@@ -466,7 +544,6 @@ pub fn map_stats_embed(
     )
     .field("Résumé", list_summary(&list, "lignes de cartes"), false)
     .field("Cartes", list.value, false)
-    .field("Source", "`char`, `login`", false)
 }
 
 pub fn map_online_embed(
@@ -502,7 +579,6 @@ pub fn map_online_embed(
         false,
     )
     .field("Personnages", list.value, false)
-    .field("Source", "`char`, `login`", false)
 }
 
 pub fn party_embed(party: &PartyDetails) -> CreateEmbed {
@@ -527,7 +603,6 @@ pub fn party_embed(party: &PartyDetails) -> CreateEmbed {
     )
     .field("Mode EXP", party_exp_mode(party.exp_mode), true)
     .field("Mode objets", party_item_mode(party.item_mode), true)
-    .field("Source", "`party`, `char`, `login`", false)
 }
 
 pub fn party_not_found_embed(name: &str) -> CreateEmbed {
@@ -574,7 +649,6 @@ pub fn party_members_embed(
     )
     .field("Résumé", list_summary(&list, "membres du groupe"), false)
     .field("Membres", list.value, false)
-    .field("Source", "`party`, `char`, `login`", false)
 }
 
 pub fn homunculus_embed(homunculus: &HomunculusProfile) -> CreateEmbed {
@@ -610,7 +684,6 @@ pub fn homunculus_embed(homunculus: &HomunculusProfile) -> CreateEmbed {
         ),
         false,
     )
-    .field("Source", "`homunculus`, `char`, `login`", false)
 }
 
 pub fn homunculus_not_found_embed(character: &str) -> CreateEmbed {
@@ -639,7 +712,6 @@ pub fn pet_embed(pet: &PetProfile) -> CreateEmbed {
     .field("Faim", format!("`{}`", pet.hunger), true)
     .field("Incubé", incubated, true)
     .field("Auto-nourrissage", autofeed, true)
-    .field("Source", "`pet`, `char`, `login`", false)
 }
 
 pub fn pet_not_found_embed(character: &str) -> CreateEmbed {
@@ -669,7 +741,6 @@ pub fn zeny_embed(summary: &ZenySummary) -> CreateEmbed {
         .field("Zeny total", format!("`{}`", format_number(summary.total_zeny)), true)
         .field("Zeny moyen", format!("`{}`", format_number(summary.average_zeny)), true)
         .field("Personnage visible le plus riche", richest, false)
-        .field("Source", "`char`, `login`", false)
 }
 
 pub fn castles_embed(castles: &[CastleSummary], requested_limit: u32) -> CreateEmbed {
@@ -703,7 +774,6 @@ pub fn castles_embed(castles: &[CastleSummary], requested_limit: u32) -> CreateE
     )
     .field("Résumé", list_summary(&list, "castles"), false)
     .field("Châteaux", list.value, false)
-    .field("Source", "`guild_castle`, `guild`", false)
 }
 
 pub fn castle_detail_embed(castle: &CastleDetails) -> CreateEmbed {
@@ -742,7 +812,6 @@ pub fn castle_detail_embed(castle: &CastleDetails) -> CreateEmbed {
         ),
         false,
     )
-    .field("Source", "`guild_castle`, `guild`", false)
 }
 
 pub fn castle_not_found_embed(castle_id: i64) -> CreateEmbed {
@@ -785,7 +854,6 @@ pub fn guild_alliances_embed(
     )
     .field("Résumé", list_summary(&list, "guild relations"), false)
     .field("Relations", list.value, false)
-    .field("Source", "`guild_alliance`, `guild`", false)
 }
 
 pub fn guild_skills_embed(
@@ -816,7 +884,6 @@ pub fn guild_skills_embed(
     )
     .field("Résumé", list_summary(&list, "guild skills"), false)
     .field("Compétences", list.value, false)
-    .field("Source", "`guild_skill`, `guild`", false)
 }
 
 pub fn homunculus_top_embed(
@@ -849,7 +916,6 @@ pub fn homunculus_top_embed(
     )
     .field("Résumé", list_summary(&list, "entrées d’homoncules"), false)
     .field("Classement", list.value, false)
-    .field("Source", "`homunculus`, `char`, `login`", false)
 }
 
 pub fn pet_top_embed(entries: &[PetRankingEntry], requested_limit: u32) -> CreateEmbed {
@@ -879,7 +945,6 @@ pub fn pet_top_embed(entries: &[PetRankingEntry], requested_limit: u32) -> Creat
     )
     .field("Résumé", list_summary(&list, "entrées de familiers"), false)
     .field("Classement", list.value, false)
-    .field("Source", "`pet`, `char`, `login`", false)
 }
 
 pub fn quest_stats_embed(stats: &QuestStats) -> CreateEmbed {
@@ -904,7 +969,6 @@ pub fn quest_stats_embed(stats: &QuestStats) -> CreateEmbed {
     .field("État 0", format!("`{}`", stats.state_0), true)
     .field("État 1", format!("`{}`", stats.state_1), true)
     .field("État 2", format!("`{}`", stats.state_2), true)
-    .field("Source", "`quest`, `char`, `login`", false)
 }
 
 pub fn account_characters_embed(
@@ -954,7 +1018,6 @@ pub fn account_characters_embed(
         false,
     )
     .field("Personnages", list.value, false)
-    .field("Source", "`login`, `char`, `guild`", false)
 }
 
 pub fn account_status_embed(status: &AccountStatus) -> CreateEmbed {
@@ -1008,7 +1071,50 @@ pub fn account_status_embed(status: &AccountStatus) -> CreateEmbed {
         true,
     )
     .field("Expiration", unix_time_field(status.expiration_time), true)
-    .field("Source", "`login`, `char`", false)
+}
+
+pub fn account_list_embed(accounts: &AccountList, requested_limit: u32) -> CreateEmbed {
+    if accounts.entries.is_empty() {
+        return warning_embed(
+            "Liste des comptes rAthenaFR",
+            "Aucun compte trouvé dans la table login.",
+        );
+    }
+
+    let list = limited_list(&accounts.entries, requested_limit, |index, account| {
+        let row_number = accounts.offset as usize + index + 1;
+        format!(
+            "`{:>2}.` Compte `{}` — `{}` — Sexe `{}` — Groupe `{}` — {} — Personnages `{}` — Dernière connexion `{}`",
+            row_number,
+            account.account_id,
+            account.userid,
+            account.sex,
+            account.group_id,
+            account_state(account.state),
+            account.characters,
+            account.lastlogin.as_deref().unwrap_or("Jamais"),
+        )
+    });
+
+    info_embed(
+        "Liste des comptes rAthenaFR",
+        "Comptes créés dans la table login, triés du plus récent au plus ancien par account_id.",
+    )
+    .field(
+        "Total comptes",
+        format!("`{}`", format_number(accounts.total_accounts)),
+        true,
+    )
+    .field(
+        "Page",
+        format!(
+            "`{}` — `{}` comptes par page",
+            accounts.page, accounts.per_page
+        ),
+        true,
+    )
+    .field("Résumé", list_summary(&list, "comptes"), false)
+    .field("Comptes", list.value, false)
 }
 
 pub fn account_not_found_embed(account_id: i64) -> CreateEmbed {
@@ -1143,7 +1249,6 @@ pub fn character_quests_embed(
     )
     .field("Résumé", list_summary(&list, "entrées de quêtes"), false)
     .field("Quêtes", list.value, false)
-    .field("Source", "`quest`, `char`", false)
 }
 
 pub fn character_equipment_embed(
@@ -1169,7 +1274,6 @@ pub fn character_equipment_embed(
     )
     .field("Résumé", list_summary(&list, "objets équipés"), false)
     .field("Équipement", list.value, false)
-    .field("Source", "`inventory`, `char`", false)
 }
 
 pub fn character_inventory_embed(
@@ -1198,7 +1302,6 @@ pub fn character_inventory_embed(
     )
     .field("Résumé", list_summary(&list, "objets d’inventaire"), false)
     .field("Objets", list.value, false)
-    .field("Source", "`inventory`, `char`", false)
 }
 
 pub fn item_count_embed(summary: &ItemCountSummary) -> CreateEmbed {
@@ -1233,11 +1336,6 @@ pub fn item_count_embed(summary: &ItemCountSummary) -> CreateEmbed {
         "Total",
         format!("`{}`", format_number(summary.total_amount)),
         true,
-    )
-    .field(
-        "Source",
-        "`inventory`, `cart_inventory`, `storage`, `guild_storage`",
-        false,
     )
 }
 
@@ -1281,11 +1379,6 @@ pub fn item_owners_embed(
         false,
     )
     .field("Propriétaires", list.value, false)
-    .field(
-        "Source",
-        "`inventory`, `cart_inventory`, `storage`, `guild_storage`, `char`, `login`, `guild`",
-        false,
-    )
 }
 
 pub fn account_overview_embed(
@@ -1346,7 +1439,6 @@ pub fn account_overview_embed(
         trim_embed_value(character_lines),
         false,
     )
-    .field("Source", "`login`, `char`, `guild`", false)
 }
 
 pub fn ban_list_embed(entries: &[BanEntry], requested_limit: u32) -> CreateEmbed {
@@ -1377,7 +1469,6 @@ pub fn ban_list_embed(entries: &[BanEntry], requested_limit: u32) -> CreateEmbed
     )
     .field("Résumé", list_summary(&list, "comptes bloqués"), false)
     .field("Comptes", list.value, false)
-    .field("Source", "`login`, `char`", false)
 }
 
 pub fn who_sell_embed(
@@ -1415,11 +1506,6 @@ pub fn who_sell_embed(
     )
     .field("Résumé", list_summary(&list, "lignes de vendeurs"), false)
     .field("Vendeurs", list.value, false)
-    .field(
-        "Source",
-        "`vendings`, `vending_items`, `cart_inventory`, `char`, `login`",
-        false,
-    )
 }
 
 pub fn who_buy_embed(item_id: i64, buyers: &[MarketBuyEntry], requested_limit: u32) -> CreateEmbed {
@@ -1453,11 +1539,6 @@ pub fn who_buy_embed(item_id: i64, buyers: &[MarketBuyEntry], requested_limit: u
     )
     .field("Résumé", list_summary(&list, "lignes d’acheteurs"), false)
     .field("Acheteurs", list.value, false)
-    .field(
-        "Source",
-        "`buyingstores`, `buyingstore_items`, `char`, `login`",
-        false,
-    )
 }
 
 pub fn market_embed(overview: &MarketOverview) -> CreateEmbed {
@@ -1496,11 +1577,6 @@ pub fn market_embed(overview: &MarketOverview) -> CreateEmbed {
         format!("`{}`", highest_buy),
         true,
     )
-    .field(
-        "Source",
-        "Tables natives des boutiques de vente et d’achat",
-        false,
-    )
 }
 
 pub fn venders_embed(stores: &[VendingStoreEntry], requested_limit: u32) -> CreateEmbed {
@@ -1536,11 +1612,6 @@ pub fn venders_embed(stores: &[VendingStoreEntry], requested_limit: u32) -> Crea
     )
     .field("Résumé", list_summary(&list, "boutiques de vente"), false)
     .field("Boutiques", list.value, false)
-    .field(
-        "Source",
-        "`vendings`, `vending_items`, `char`, `login`",
-        false,
-    )
 }
 
 pub fn buyers_embed(stores: &[BuyingStoreEntry], requested_limit: u32) -> CreateEmbed {
@@ -1577,11 +1648,6 @@ pub fn buyers_embed(stores: &[BuyingStoreEntry], requested_limit: u32) -> Create
     )
     .field("Résumé", list_summary(&list, "boutiques d’achat"), false)
     .field("Boutiques", list.value, false)
-    .field(
-        "Source",
-        "`buyingstores`, `buyingstore_items`, `char`, `login`",
-        false,
-    )
 }
 
 pub fn staff_only_embed() -> CreateEmbed {
