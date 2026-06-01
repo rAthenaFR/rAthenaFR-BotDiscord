@@ -3,8 +3,9 @@ use crate::config::AppConfig;
 use crate::discord::embeds;
 use crate::infra::observability::CommandTimer;
 use crate::rathenafr::{
-    check_services, BuyingStoreEntry, ClassDistributionEntry, DatabaseTable, MapStatsEntry,
-    MarketBuyEntry, MarketOverview, MarketSellEntry, RAthenaFrDatabase, VendingStoreEntry,
+    check_services, AccountUpdateRequest, BuyingStoreEntry, ClassDistributionEntry, DatabaseTable,
+    MapStatsEntry, MarketBuyEntry, MarketOverview, MarketSellEntry, RAthenaFrDatabase,
+    SearchResults, VendingStoreEntry,
 };
 use anyhow::Result;
 use serenity::all::{
@@ -329,22 +330,49 @@ impl Handler {
                 .respond_error(context, command, "Option obligatoire manquante : query.")
                 .await;
         };
+        let category = match SearchCategory::from_option(string_option(command, "category")) {
+            Ok(category) => category,
+            Err(message) => return self.respond_error(context, command, message).await,
+        };
 
         let (display_limit, query_limit) = self.list_limits(command);
-        let results = self
-            .state
-            .database
-            .search_all(
-                self.state.config.display.public_character_group_threshold(),
-                query,
-                query_limit,
-            )
-            .await?;
+        let group_threshold = self.state.config.display.public_character_group_threshold();
+        let results = match category {
+            SearchCategory::All => {
+                self.state
+                    .database
+                    .search_all(group_threshold, query, query_limit)
+                    .await?
+            }
+            SearchCategory::Players => SearchResults {
+                characters: self
+                    .state
+                    .database
+                    .search_characters(group_threshold, query, query_limit)
+                    .await?,
+                items: Vec::new(),
+                monsters: Vec::new(),
+            },
+            SearchCategory::Items => SearchResults {
+                characters: Vec::new(),
+                items: self.state.database.search_items(query, query_limit).await?,
+                monsters: Vec::new(),
+            },
+            SearchCategory::Monsters => SearchResults {
+                characters: Vec::new(),
+                items: Vec::new(),
+                monsters: self
+                    .state
+                    .database
+                    .search_monsters(query, query_limit)
+                    .await?,
+            },
+        };
 
         self.respond_embed(
             context,
             command,
-            embeds::search_embed(query, &results, display_limit),
+            embeds::search_embed(query, category.label(), &results, display_limit),
             false,
         )
         .await
@@ -404,49 +432,10 @@ impl Handler {
             Err(message) => return self.respond_error(context, command, &message).await,
         };
 
-        let birthdate = birthdate.trim();
-        let birthdate_is_valid = if birthdate.len() == 10 {
-            let parts = birthdate.split('-').collect::<Vec<_>>();
-
-            if parts.len() == 3 && parts[0].len() == 4 && parts[1].len() == 2 && parts[2].len() == 2
-            {
-                match (
-                    parts[0].parse::<u16>(),
-                    parts[1].parse::<u8>(),
-                    parts[2].parse::<u8>(),
-                ) {
-                    (Ok(year), Ok(month), Ok(day)) => {
-                        let leap_year = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
-                        let max_day = match month {
-                            1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-                            4 | 6 | 9 | 11 => 30,
-                            2 if leap_year => 29,
-                            2 => 28,
-                            _ => 0,
-                        };
-
-                        year >= 1900 && max_day > 0 && day >= 1 && day <= max_day
-                    }
-                    _ => false,
-                }
-            } else {
-                false
-            }
-        } else {
-            false
+        let birthdate = match validate_account_birthdate(birthdate) {
+            Ok(birthdate) => birthdate,
+            Err(message) => return self.respond_error(context, command, &message).await,
         };
-
-        if !birthdate_is_valid {
-            return self
-                .respond_error(
-                    context,
-                    command,
-                    "La date de naissance doit être au format `YYYY-MM-DD`.",
-                )
-                .await;
-        }
-
-        let birthdate = birthdate.to_string();
 
         let email = match validate_account_email(string_option(command, "email")) {
             Ok(email) => email,
@@ -1349,14 +1338,9 @@ impl Handler {
         context: &Context,
         command: &CommandInteraction,
     ) -> Result<()> {
-        if !self.has_owner_access(command) {
+        if !self.has_staff_access(command) {
             return self
-                .respond_embed(
-                    context,
-                    command,
-                    embeds::account_manage_owner_only_embed(),
-                    true,
-                )
+                .respond_embed(context, command, embeds::staff_only_embed(), true)
                 .await;
         }
 
@@ -1374,19 +1358,59 @@ impl Handler {
                 .respond_error(context, command, "Option obligatoire manquante : action.")
                 .await;
         };
-        let Some(confirm) = string_option(command, "confirm") else {
-            return self
-                .respond_error(context, command, "Option obligatoire manquante : confirm.")
-                .await;
-        };
+        if action.eq_ignore_ascii_case("edit") {
+            let update = match account_update_request(command) {
+                Ok(update) => update,
+                Err(message) => return self.respond_error(context, command, &message).await,
+            };
 
-        if !action.eq_ignore_ascii_case("delete") {
+            if update.is_empty() {
+                return self
+                    .respond_error(
+                        context,
+                        command,
+                        "Aucun champ à modifier. Renseigne au moins une option d’édition.",
+                    )
+                    .await;
+            }
+
+            let result = self
+                .state
+                .database
+                .update_account(
+                    account_id,
+                    update,
+                    self.state.config.account_commands.password_mode,
+                )
+                .await?;
+
             return self
-                .respond_error(context, command, "Action supportée : delete.")
+                .respond_embed(
+                    context,
+                    command,
+                    embeds::account_update_result_embed(&result),
+                    true,
+                )
                 .await;
         }
 
-        let expected_confirmation = format!("DELETE-{account_id}");
+        if !action.eq_ignore_ascii_case("delete") {
+            return self
+                .respond_error(context, command, "Actions supportées : edit, delete.")
+                .await;
+        }
+
+        let Some(confirm) = string_option(command, "confirm") else {
+            return self
+                .respond_error(
+                    context,
+                    command,
+                    "Option obligatoire pour delete : confirm.",
+                )
+                .await;
+        };
+
+        let expected_confirmation = format!("DELETE-ALL-{account_id}");
         if confirm != expected_confirmation {
             return self
                 .respond_error(
@@ -1400,7 +1424,7 @@ impl Handler {
         let result = self
             .state
             .database
-            .delete_account_if_empty(account_id)
+            .delete_account_completely(account_id)
             .await?;
 
         self.respond_embed(
@@ -1515,20 +1539,6 @@ impl Handler {
             &config.admin_role_ids,
             &config.owner_role_ids,
         )
-    }
-
-    fn has_owner_access(&self, command: &CommandInteraction) -> bool {
-        let config = &self.state.config.discord;
-        let Some(member) = command.member.as_ref() else {
-            return false;
-        };
-        let member_role_ids = member
-            .roles
-            .iter()
-            .map(|role| role.get())
-            .collect::<Vec<_>>();
-
-        has_configured_owner_role(&member_role_ids, &config.owner_role_ids)
     }
 
     async fn respond_embed(
@@ -1746,6 +1756,62 @@ impl Handler {
     }
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum SearchCategory {
+    All,
+    Players,
+    Items,
+    Monsters,
+}
+
+impl SearchCategory {
+    fn from_option(value: Option<&str>) -> std::result::Result<Self, &'static str> {
+        match value.unwrap_or("all") {
+            "all" => Ok(Self::All),
+            "players" => Ok(Self::Players),
+            "items" => Ok(Self::Items),
+            "monsters" => Ok(Self::Monsters),
+            _ => Err("Catégorie supportée : all, players, items ou monsters."),
+        }
+    }
+
+    const fn label(self) -> &'static str {
+        match self {
+            Self::All => "toutes les catégories",
+            Self::Players => "joueurs",
+            Self::Items => "items",
+            Self::Monsters => "monstres",
+        }
+    }
+}
+
+fn account_update_request(
+    command: &CommandInteraction,
+) -> std::result::Result<AccountUpdateRequest, String> {
+    Ok(AccountUpdateRequest {
+        userid: string_option(command, "username")
+            .map(validate_account_username)
+            .transpose()?,
+        password: string_option(command, "password")
+            .map(validate_account_password)
+            .transpose()?,
+        sex: string_option(command, "sex")
+            .map(validate_account_sex)
+            .transpose()?,
+        birthdate: string_option(command, "birthdate")
+            .map(validate_account_birthdate)
+            .transpose()?,
+        email: string_option(command, "email")
+            .map(|value| validate_account_email(Some(value)))
+            .transpose()?,
+        group_id: optional_non_negative_i32_option(command, "group_id")?,
+        state: optional_non_negative_i64_option(command, "state")?,
+        unban_time: optional_non_negative_i64_option(command, "unban_time")?,
+        expiration_time: optional_non_negative_i64_option(command, "expiration_time")?,
+        character_slots: optional_non_negative_i32_option(command, "character_slots")?,
+    })
+}
+
 fn string_option<'a>(command: &'a CommandInteraction, name: &str) -> Option<&'a str> {
     command
         .data
@@ -1790,6 +1856,40 @@ fn integer_option(command: &CommandInteraction, name: &str) -> Option<i64> {
         })
 }
 
+fn optional_non_negative_i32_option(
+    command: &CommandInteraction,
+    name: &str,
+) -> std::result::Result<Option<i32>, String> {
+    let Some(value) = integer_option(command, name) else {
+        return Ok(None);
+    };
+
+    if value < 0 {
+        return Err(format!("`{name}` doit être supérieur ou égal à 0."));
+    }
+
+    if value > i32::MAX as i64 {
+        return Err(format!("`{name}` est trop grand."));
+    }
+
+    Ok(Some(value as i32))
+}
+
+fn optional_non_negative_i64_option(
+    command: &CommandInteraction,
+    name: &str,
+) -> std::result::Result<Option<i64>, String> {
+    let Some(value) = integer_option(command, name) else {
+        return Ok(None);
+    };
+
+    if value < 0 {
+        return Err(format!("`{name}` doit être supérieur ou égal à 0."));
+    }
+
+    Ok(Some(value))
+}
+
 fn has_configured_staff_role(
     member_role_ids: &[u64],
     staff_role_ids: &[u64],
@@ -1807,13 +1907,6 @@ fn has_configured_staff_role(
         && member_role_ids
             .iter()
             .any(|role_id| allowed_role_ids.contains(role_id))
-}
-
-fn has_configured_owner_role(member_role_ids: &[u64], owner_role_ids: &[u64]) -> bool {
-    !owner_role_ids.is_empty()
-        && member_role_ids
-            .iter()
-            .any(|role_id| owner_role_ids.contains(role_id))
 }
 
 fn validate_account_username(value: &str) -> std::result::Result<String, String> {
@@ -1858,6 +1951,45 @@ fn validate_account_sex(value: &str) -> std::result::Result<String, String> {
         "F" => Ok("F".to_string()),
         _ => Err("Le sexe du compte doit être `M` ou `F`.".to_string()),
     }
+}
+
+fn validate_account_birthdate(value: &str) -> std::result::Result<String, String> {
+    let birthdate = value.trim();
+    let birthdate_is_valid = if birthdate.len() == 10 {
+        let parts = birthdate.split('-').collect::<Vec<_>>();
+
+        if parts.len() == 3 && parts[0].len() == 4 && parts[1].len() == 2 && parts[2].len() == 2 {
+            match (
+                parts[0].parse::<u16>(),
+                parts[1].parse::<u8>(),
+                parts[2].parse::<u8>(),
+            ) {
+                (Ok(year), Ok(month), Ok(day)) => {
+                    let leap_year = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+                    let max_day = match month {
+                        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+                        4 | 6 | 9 | 11 => 30,
+                        2 if leap_year => 29,
+                        2 => 28,
+                        _ => 0,
+                    };
+
+                    year >= 1900 && max_day > 0 && day >= 1 && day <= max_day
+                }
+                _ => false,
+            }
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    if !birthdate_is_valid {
+        return Err("La date de naissance doit être au format `YYYY-MM-DD`.".to_string());
+    }
+
+    Ok(birthdate.to_string())
 }
 
 fn validate_account_email(value: Option<&str>) -> std::result::Result<String, String> {
@@ -1935,10 +2067,24 @@ mod tests {
     }
 
     #[test]
-    fn owner_role_logic_requires_configured_owner_role() {
-        assert!(!has_configured_owner_role(&[10], &[]));
-        assert!(!has_configured_owner_role(&[10], &[20]));
-        assert!(has_configured_owner_role(&[10], &[10]));
+    fn search_category_defaults_and_validates() {
+        assert_eq!(
+            SearchCategory::from_option(None).unwrap(),
+            SearchCategory::All
+        );
+        assert_eq!(
+            SearchCategory::from_option(Some("players")).unwrap(),
+            SearchCategory::Players
+        );
+        assert_eq!(
+            SearchCategory::from_option(Some("items")).unwrap(),
+            SearchCategory::Items
+        );
+        assert_eq!(
+            SearchCategory::from_option(Some("monsters")).unwrap(),
+            SearchCategory::Monsters
+        );
+        assert!(SearchCategory::from_option(Some("guilds")).is_err());
     }
 
     #[test]
@@ -1946,6 +2092,17 @@ mod tests {
         assert_eq!(validate_account_username("User_123").unwrap(), "User_123");
         assert!(validate_account_username("abc").is_err());
         assert!(validate_account_username("invalid-name").is_err());
+    }
+
+    #[test]
+    fn account_birthdate_validation_is_strict() {
+        assert_eq!(
+            validate_account_birthdate(" 2000-02-29 ").unwrap(),
+            "2000-02-29"
+        );
+        assert!(validate_account_birthdate("1899-12-31").is_err());
+        assert!(validate_account_birthdate("2001-02-29").is_err());
+        assert!(validate_account_birthdate("2001/02/28").is_err());
     }
 
     #[test]
@@ -1969,6 +2126,7 @@ mod tests {
             "charequipment",
             "itemcount",
             "itemowners",
+            "accountmanage",
             "banlist",
         ];
 

@@ -79,6 +79,18 @@ fn search_command() -> CreateCommand {
             )
             .required(true),
         )
+        .add_option(
+            CreateCommandOption::new(
+                CommandOptionType::String,
+                "category",
+                "Catégorie à rechercher.",
+            )
+            .required(false)
+            .add_string_choice("Tout", "all")
+            .add_string_choice("Joueurs", "players")
+            .add_string_choice("Items", "items")
+            .add_string_choice("Monstres", "monsters"),
+        )
         .add_option(limit_option())
 }
 

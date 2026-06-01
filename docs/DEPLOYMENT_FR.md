@@ -2,6 +2,9 @@
 
 Documentation française de rAthenaFR Discord Bot pour le projet rAthena.
 
+> [!WARNING]
+> Ne déploie jamais le bot avec un fichier `.env` incomplet, un token Discord de test ou une base MariaDB exposée publiquement.
+
 ## Objectif
 
 Cette page décrit un déploiement hors poste local, par exemple sur un VPS, un serveur dédié ou la même machine Docker que rAthena.
@@ -12,9 +15,12 @@ Le bot n’a pas besoin de port entrant public. Il doit seulement pouvoir sortir
 
 - Bot Discord dans un conteneur Docker.
 - Base MariaDB/MySQL non exposée à Internet.
-- Accès SQL en lecture seule avec l’utilisateur `rathenafr_bot`.
+- Accès SQL en lecture seule par défaut avec l’utilisateur `rathenafr_bot`.
 - Communication avec la base via réseau Docker, IP privée, VPN ou tunnel privé.
 - Fichier `.env` présent uniquement sur le serveur.
+
+> [!NOTE]
+> Le bot n’a pas besoin d’un port HTTP public. Il initie lui-même la connexion à Discord.
 
 ## Préparer le serveur
 
@@ -31,6 +37,9 @@ Garde le fichier `.env` lisible uniquement par l’utilisateur qui administre le
 ```bash
 chmod 600 .env
 ```
+
+> [!IMPORTANT]
+> Ne stocke pas `.env` dans Git ni dans une image Docker.
 
 ## Configurer Discord
 
@@ -65,6 +74,9 @@ Cette option nécessite des droits SQL supplémentaires sur `login`. Ne l’acti
 
 Utilise `RATHENAFR_ACCOUNT_PASSWORD_MODE=md5` uniquement si ton serveur login rAthena attend des mots de passe MD5 dans `login.user_pass`.
 
+> [!CAUTION]
+> Si tu veux aussi utiliser `/accountmanage`, applique les permissions décrites dans `docs/ACCOUNT_MANAGEMENT_FR.md` et vérifie tes sauvegardes.
+
 ## Configurer la base distante
 
 Si la base est dans Docker sur le même hôte, utilise le nom du conteneur ou du service :
@@ -78,6 +90,9 @@ RATHENAFR_DB_PASSWORD=replace_me
 ```
 
 Si la base est sur un autre serveur, utilise une IP privée ou un nom DNS privé. N’expose pas MariaDB publiquement.
+
+> [!WARNING]
+> Un port MariaDB ouvert sur Internet est une erreur de déploiement. Utilise un réseau privé, Docker, VPN ou tunnel privé.
 
 Crée ou vérifie l’utilisateur SQL en lecture seule :
 
@@ -109,6 +124,9 @@ docker compose run --rm rathenafr-discord-bot --deploy
 ```
 
 Refais cette commande après tout changement de nom, description ou option de commande.
+
+> [!TIP]
+> Les changements de rendu des embeds nécessitent seulement un rebuild/redémarrage du bot.
 
 ## Démarrer le bot
 

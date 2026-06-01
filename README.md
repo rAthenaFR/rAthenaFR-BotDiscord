@@ -35,22 +35,26 @@ rAthenaFR Discord Bot est un compagnon Discord pour le projet rAthena. Il ne rem
 
 ## Documentation
 
+> [!NOTE]
+> Le point d’entrée recommandé est [`docs/INDEX_FR.md`](docs/INDEX_FR.md).
+
 | Document | Description |
 |---|---|
-| [`docs/CONTRIBUTOR_GUIDE_FR.md`](docs/CONTRIBUTOR_GUIDE_FR.md) | Cartographie des contributeurs, flux de projet et processus de gestion des changements sécurisés.|
-| [`docs/INSTALLATION_FR.md`](docs/INSTALLATION_FR.md) | Installation et première configuration. |
-| [`docs/DEPLOYMENT_FR.md`](docs/DEPLOYMENT_FR.md) | Mise en ligne sur serveur distant ou VPS. |
-| [`docs/CONFIGURATION_FR.md`](docs/CONFIGURATION_FR.md) | Variables d'environnement et configuration d'exécution. |
-| [`docs/COMMANDS_FR.md`](docs/COMMANDS_FR.md) | Référence complète des commandes. |
-| [`docs/DATABASE_FR.md`](docs/DATABASE_FR.md) | Tables de base de données et étendue des requêtes. |
-| [`docs/DOCKER_FR.md`](docs/DOCKER_FR.md) | Déploiement Docker. |
-| [`docs/SECURITY_FR.md`](docs/SECURITY_FR.md) | Modèle de sécurité et autorisations recommandées. |
-| [`docs/TROUBLESHOOTING_FR.md`](docs/TROUBLESHOOTING_FR.md) | Problèmes courants et correctifs. |
-| [`docs/DEVELOPMENT_FR.md`](docs/DEVELOPMENT_FR.md) | Flux de travail de développement. |
+| [`docs/ACCOUNT_MANAGEMENT_FR.md`](docs/ACCOUNT_MANAGEMENT_FR.md) | Création, édition et suppression complète de comptes. |
 | [`docs/ARCHITECTURE_FR.md`](docs/ARCHITECTURE_FR.md) | Architecture interne. |
+| [`docs/COMMANDS_FR.md`](docs/COMMANDS_FR.md) | Référence complète des commandes. |
+| [`docs/CONFIGURATION_FR.md`](docs/CONFIGURATION_FR.md) | Variables d'environnement et configuration d'exécution. |
+| [`docs/CONTRIBUTOR_GUIDE_FR.md`](docs/CONTRIBUTOR_GUIDE_FR.md) | Guide pour ajouter ou modifier des commandes. |
+| [`docs/DATABASE_FR.md`](docs/DATABASE_FR.md) | Tables utilisées et permissions SQL. |
+| [`docs/DEPLOYMENT_FR.md`](docs/DEPLOYMENT_FR.md) | Mise en ligne sur serveur distant ou VPS. |
+| [`docs/DEVELOPMENT_FR.md`](docs/DEVELOPMENT_FR.md) | Flux de travail de développement. |
+| [`docs/DOCKER_FR.md`](docs/DOCKER_FR.md) | Exécution avec Docker Compose. |
 | [`docs/ENV_MIGRATION_FR.md`](docs/ENV_MIGRATION_FR.md) | Migration des anciennes variables d’environnement. |
+| [`docs/INSTALLATION_FR.md`](docs/INSTALLATION_FR.md) | Installation et première configuration. |
+| [`docs/RELEASE_FR.md`](docs/RELEASE_FR.md) | Checklist de publication. |
+| [`docs/SECURITY_FR.md`](docs/SECURITY_FR.md) | Sécurité, secrets et autorisations recommandées. |
+| [`docs/TROUBLESHOOTING_FR.md`](docs/TROUBLESHOOTING_FR.md) | Problèmes courants et correctifs. |
 | [`docs/WINDOWS_APP_CONTROL_FR.md`](docs/WINDOWS_APP_CONTROL_FR.md) | Contournement Windows App Control pour le build local. |
-| [`docs/RELEASE_FR.md`](docs/RELEASE_FR.md) | processus de libération. |
 
 ## Licence
 

@@ -1,6 +1,6 @@
 use crate::config::{AccountPasswordMode, DatabaseConfig};
 use anyhow::{Context, Result};
-use sqlx::{mysql::MySqlPoolOptions, MySqlPool, Row};
+use sqlx::{mysql::MySqlPoolOptions, MySql, MySqlPool, Row, Transaction};
 use std::time::Duration;
 
 #[derive(Clone)]
@@ -55,6 +55,8 @@ use crate::rathenafr::models::*;
 
 const ITEM_SEARCH_TABLES: &[&str] = &["item_db", "item_db_re"];
 const MOB_SEARCH_TABLES: &[&str] = &["mob_db", "mob_db_re"];
+const ACCOUNT_DELETE_ACCOUNT_ID_SKIP_TABLES: &[&str] = &["char", "login"];
+const ACCOUNT_DELETE_CHAR_ID_SKIP_TABLES: &[&str] = &["char", "guild"];
 
 impl RAthenaFrDatabase {
     pub async fn connect(config: &DatabaseConfig) -> Result<Self> {
@@ -380,7 +382,7 @@ impl RAthenaFrDatabase {
         })
     }
 
-    async fn search_items(&self, query: &str, limit: u32) -> Result<Vec<ItemSearchEntry>> {
+    pub async fn search_items(&self, query: &str, limit: u32) -> Result<Vec<ItemSearchEntry>> {
         let mut entries = Vec::new();
 
         for table_name in ITEM_SEARCH_TABLES {
@@ -471,7 +473,11 @@ impl RAthenaFrDatabase {
             .collect()
     }
 
-    async fn search_monsters(&self, query: &str, limit: u32) -> Result<Vec<MonsterSearchEntry>> {
+    pub async fn search_monsters(
+        &self,
+        query: &str,
+        limit: u32,
+    ) -> Result<Vec<MonsterSearchEntry>> {
         let mut entries = Vec::new();
 
         for table_name in MOB_SEARCH_TABLES {
@@ -1546,13 +1552,294 @@ impl RAthenaFrDatabase {
         Ok(account_count > 0)
     }
 
-    pub async fn delete_account_if_empty(&self, account_id: i64) -> Result<AccountDeleteResult> {
-        let storage_table_available = self.table_has_columns("storage", &["account_id"]).await?;
+    pub async fn update_account(
+        &self,
+        account_id: i64,
+        update: AccountUpdateRequest,
+        password_mode: AccountPasswordMode,
+    ) -> Result<AccountUpdateResult> {
         let mut tx = self
             .pool
             .begin()
             .await
-            .context("start account delete transaction")?;
+            .context("start account update transaction")?;
+
+        let row = sqlx::query(
+            r#"
+            SELECT userid
+            FROM `login`
+            WHERE account_id = ?
+            FOR UPDATE
+            "#,
+        )
+        .bind(account_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .context("fetch account before update")?;
+
+        let Some(row) = row else {
+            tx.commit()
+                .await
+                .context("commit missing account update transaction")?;
+            return Ok(AccountUpdateResult::NotFound { account_id });
+        };
+
+        let current_userid: String = row.try_get("userid")?;
+        let mut resulting_userid = current_userid.clone();
+        let mut changed_fields = Vec::new();
+
+        if let Some(userid) = update.userid {
+            let existing = sqlx::query(
+                r#"
+                SELECT CAST(COUNT(*) AS SIGNED) AS account_count
+                FROM `login`
+                WHERE userid = ?
+                  AND account_id <> ?
+                "#,
+            )
+            .bind(&userid)
+            .bind(account_id)
+            .fetch_one(&mut *tx)
+            .await
+            .context("check updated account username availability")?;
+
+            let account_count: i64 = existing.try_get("account_count")?;
+            if account_count > 0 {
+                tx.commit()
+                    .await
+                    .context("commit refused account update transaction")?;
+                return Ok(AccountUpdateResult::UsernameAlreadyExists { account_id, userid });
+            }
+
+            sqlx::query(
+                r#"
+                UPDATE `login`
+                SET userid = ?
+                WHERE account_id = ?
+                LIMIT 1
+                "#,
+            )
+            .bind(&userid)
+            .bind(account_id)
+            .execute(&mut *tx)
+            .await
+            .context("update account username")?;
+
+            resulting_userid = userid;
+            changed_fields.push("Login".to_string());
+        }
+
+        if let Some(password) = update.password {
+            let sql = match password_mode {
+                AccountPasswordMode::Plain => {
+                    r#"
+                    UPDATE `login`
+                    SET user_pass = ?
+                    WHERE account_id = ?
+                    LIMIT 1
+                    "#
+                }
+                AccountPasswordMode::Md5 => {
+                    r#"
+                    UPDATE `login`
+                    SET user_pass = MD5(?)
+                    WHERE account_id = ?
+                    LIMIT 1
+                    "#
+                }
+            };
+
+            sqlx::query(sql)
+                .bind(password)
+                .bind(account_id)
+                .execute(&mut *tx)
+                .await
+                .context("update account password")?;
+
+            changed_fields.push("Mot de passe".to_string());
+        }
+
+        if let Some(sex) = update.sex {
+            sqlx::query(
+                r#"
+                UPDATE `login`
+                SET sex = ?
+                WHERE account_id = ?
+                LIMIT 1
+                "#,
+            )
+            .bind(sex)
+            .bind(account_id)
+            .execute(&mut *tx)
+            .await
+            .context("update account sex")?;
+
+            changed_fields.push("Sexe".to_string());
+        }
+
+        if let Some(birthdate) = update.birthdate {
+            sqlx::query(
+                r#"
+                UPDATE `login`
+                SET birthdate = ?
+                WHERE account_id = ?
+                LIMIT 1
+                "#,
+            )
+            .bind(birthdate)
+            .bind(account_id)
+            .execute(&mut *tx)
+            .await
+            .context("update account birthdate")?;
+
+            changed_fields.push("Date de naissance".to_string());
+        }
+
+        if let Some(email) = update.email {
+            sqlx::query(
+                r#"
+                UPDATE `login`
+                SET email = ?
+                WHERE account_id = ?
+                LIMIT 1
+                "#,
+            )
+            .bind(email)
+            .bind(account_id)
+            .execute(&mut *tx)
+            .await
+            .context("update account email")?;
+
+            changed_fields.push("Email".to_string());
+        }
+
+        if let Some(group_id) = update.group_id {
+            sqlx::query(
+                r#"
+                UPDATE `login`
+                SET group_id = ?
+                WHERE account_id = ?
+                LIMIT 1
+                "#,
+            )
+            .bind(group_id)
+            .bind(account_id)
+            .execute(&mut *tx)
+            .await
+            .context("update account group_id")?;
+
+            changed_fields.push("Groupe".to_string());
+        }
+
+        if let Some(state) = update.state {
+            sqlx::query(
+                r#"
+                UPDATE `login`
+                SET state = ?
+                WHERE account_id = ?
+                LIMIT 1
+                "#,
+            )
+            .bind(state)
+            .bind(account_id)
+            .execute(&mut *tx)
+            .await
+            .context("update account state")?;
+
+            changed_fields.push("État".to_string());
+        }
+
+        if let Some(unban_time) = update.unban_time {
+            sqlx::query(
+                r#"
+                UPDATE `login`
+                SET unban_time = ?
+                WHERE account_id = ?
+                LIMIT 1
+                "#,
+            )
+            .bind(unban_time)
+            .bind(account_id)
+            .execute(&mut *tx)
+            .await
+            .context("update account unban_time")?;
+
+            changed_fields.push("Fin de bannissement".to_string());
+        }
+
+        if let Some(expiration_time) = update.expiration_time {
+            sqlx::query(
+                r#"
+                UPDATE `login`
+                SET expiration_time = ?
+                WHERE account_id = ?
+                LIMIT 1
+                "#,
+            )
+            .bind(expiration_time)
+            .bind(account_id)
+            .execute(&mut *tx)
+            .await
+            .context("update account expiration_time")?;
+
+            changed_fields.push("Expiration".to_string());
+        }
+
+        if let Some(character_slots) = update.character_slots {
+            sqlx::query(
+                r#"
+                UPDATE `login`
+                SET character_slots = ?
+                WHERE account_id = ?
+                LIMIT 1
+                "#,
+            )
+            .bind(character_slots)
+            .bind(account_id)
+            .execute(&mut *tx)
+            .await
+            .context("update account character_slots")?;
+
+            changed_fields.push("Slots personnages".to_string());
+        }
+
+        tx.commit()
+            .await
+            .context("commit account update transaction")?;
+
+        Ok(AccountUpdateResult::Updated {
+            account_id,
+            userid: resulting_userid,
+            changed_fields,
+        })
+    }
+
+    pub async fn delete_account_completely(&self, account_id: i64) -> Result<AccountDeleteResult> {
+        let account_id_tables = self.table_names_with_column("account_id").await?;
+        let char_id_tables = self.table_names_with_column("char_id").await?;
+        let friend_id_tables = self.friend_relation_tables().await?;
+        let has_guild_owner_column = self.table_has_columns("guild", &["char_id"]).await?;
+        let has_mail_character_columns = self
+            .table_has_columns("mail", &["send_id", "dest_id"])
+            .await?;
+        let has_vending_items = self
+            .table_has_columns("vending_items", &["vending_id"])
+            .await?
+            && self
+                .table_has_columns("vendings", &["id", "char_id"])
+                .await?;
+        let has_buyingstore_items = self
+            .table_has_columns("buyingstore_items", &["buyingstore_id"])
+            .await?
+            && self
+                .table_has_columns("buyingstores", &["id", "char_id"])
+                .await?;
+
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .context("start full account delete transaction")?;
 
         let row = sqlx::query(
             r#"
@@ -1571,48 +1858,110 @@ impl RAthenaFrDatabase {
         .bind(account_id)
         .fetch_optional(&mut *tx)
         .await
-        .context("fetch account before delete")?;
+        .context("fetch account before full delete")?;
 
         let Some(row) = row else {
             tx.commit()
                 .await
-                .context("commit missing account delete transaction")?;
+                .context("commit missing account full delete transaction")?;
             return Ok(AccountDeleteResult::NotFound { account_id });
         };
 
         let userid: String = row.try_get("userid")?;
         let characters: i64 = row.try_get("characters")?;
-        let storage_rows = if storage_table_available {
+
+        if has_guild_owner_column {
             let row = sqlx::query(
                 r#"
-                SELECT CAST(COUNT(*) AS SIGNED) AS storage_rows
-                FROM `storage`
-                WHERE account_id = ?
+                SELECT CAST(COUNT(*) AS SIGNED) AS owned_guilds
+                FROM `guild`
+                WHERE char_id IN (
+                    SELECT char_id
+                    FROM `char`
+                    WHERE account_id = ?
+                )
                 "#,
             )
             .bind(account_id)
             .fetch_one(&mut *tx)
             .await
-            .context("count account storage rows before delete")?;
+            .context("count owned guilds before full account delete")?;
 
-            row.try_get("storage_rows")?
-        } else {
-            0
-        };
-
-        if characters > 0 || storage_rows > 0 {
-            tx.commit()
-                .await
-                .context("commit refused account delete transaction")?;
-            return Ok(AccountDeleteResult::HasRelatedData {
-                account_id,
-                userid,
-                characters,
-                storage_rows,
-            });
+            let guilds: i64 = row.try_get("owned_guilds")?;
+            if guilds > 0 {
+                tx.commit()
+                    .await
+                    .context("commit refused full account delete transaction")?;
+                return Ok(AccountDeleteResult::HasGuildOwnership {
+                    account_id,
+                    userid,
+                    guilds,
+                });
+            }
         }
 
-        sqlx::query(
+        let mut deleted_rows = 0;
+
+        if has_vending_items {
+            deleted_rows += self
+                .delete_vending_items_for_account(&mut tx, account_id)
+                .await?;
+        }
+
+        if has_buyingstore_items {
+            deleted_rows += self
+                .delete_buyingstore_items_for_account(&mut tx, account_id)
+                .await?;
+        }
+
+        if has_mail_character_columns {
+            deleted_rows += self
+                .delete_character_relation_rows(&mut tx, "mail", "send_id", account_id)
+                .await?;
+            deleted_rows += self
+                .delete_character_relation_rows(&mut tx, "mail", "dest_id", account_id)
+                .await?;
+        }
+
+        for table_name in friend_id_tables {
+            deleted_rows += self
+                .delete_character_relation_rows(&mut tx, &table_name, "friend_id", account_id)
+                .await?;
+        }
+
+        for table_name in char_id_tables {
+            if contains_table_name(ACCOUNT_DELETE_CHAR_ID_SKIP_TABLES, &table_name) {
+                continue;
+            }
+
+            deleted_rows += self
+                .delete_character_relation_rows(&mut tx, &table_name, "char_id", account_id)
+                .await?;
+        }
+
+        for table_name in account_id_tables {
+            if contains_table_name(ACCOUNT_DELETE_ACCOUNT_ID_SKIP_TABLES, &table_name) {
+                continue;
+            }
+
+            deleted_rows += self
+                .delete_account_relation_rows(&mut tx, &table_name, account_id)
+                .await?;
+        }
+
+        deleted_rows += sqlx::query(
+            r#"
+            DELETE FROM `char`
+            WHERE account_id = ?
+            "#,
+        )
+        .bind(account_id)
+        .execute(&mut *tx)
+        .await
+        .context("delete account characters")?
+        .rows_affected();
+
+        deleted_rows += sqlx::query(
             r#"
             DELETE FROM `login`
             WHERE account_id = ?
@@ -1622,13 +1971,162 @@ impl RAthenaFrDatabase {
         .bind(account_id)
         .execute(&mut *tx)
         .await
-        .context("delete empty account")?;
+        .context("delete account login")?
+        .rows_affected();
 
         tx.commit()
             .await
-            .context("commit account delete transaction")?;
+            .context("commit full account delete transaction")?;
 
-        Ok(AccountDeleteResult::Deleted { account_id, userid })
+        Ok(AccountDeleteResult::Deleted {
+            account_id,
+            userid,
+            characters,
+            deleted_rows,
+        })
+    }
+
+    async fn table_names_with_column(&self, column_name: &str) -> Result<Vec<String>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT c.table_name
+            FROM information_schema.columns c
+            INNER JOIN information_schema.tables t
+              ON t.table_schema = c.table_schema
+             AND t.table_name = c.table_name
+            WHERE c.table_schema = DATABASE()
+              AND c.column_name = ?
+              AND t.table_type = 'BASE TABLE'
+            ORDER BY c.table_name ASC
+            "#,
+        )
+        .bind(column_name)
+        .fetch_all(&self.pool)
+        .await
+        .with_context(|| format!("list rAthena tables with column {column_name}"))?;
+
+        rows.into_iter()
+            .map(|row| row.try_get("table_name").map_err(Into::into))
+            .collect()
+    }
+
+    async fn friend_relation_tables(&self) -> Result<Vec<String>> {
+        let mut tables = Vec::new();
+
+        for table_name in self.table_names_with_column("friend_id").await? {
+            if self
+                .table_has_columns(&table_name, &["char_id", "friend_id"])
+                .await?
+            {
+                tables.push(table_name);
+            }
+        }
+
+        Ok(tables)
+    }
+
+    async fn delete_vending_items_for_account(
+        &self,
+        tx: &mut Transaction<'_, MySql>,
+        account_id: i64,
+    ) -> Result<u64> {
+        let result = sqlx::query(
+            r#"
+            DELETE vi
+            FROM `vending_items` vi
+            INNER JOIN `vendings` v ON v.id = vi.vending_id
+            WHERE v.char_id IN (
+                SELECT char_id
+                FROM `char`
+                WHERE account_id = ?
+            )
+            "#,
+        )
+        .bind(account_id)
+        .execute(&mut **tx)
+        .await
+        .context("delete vending items for account")?;
+
+        Ok(result.rows_affected())
+    }
+
+    async fn delete_buyingstore_items_for_account(
+        &self,
+        tx: &mut Transaction<'_, MySql>,
+        account_id: i64,
+    ) -> Result<u64> {
+        let result = sqlx::query(
+            r#"
+            DELETE bsi
+            FROM `buyingstore_items` bsi
+            INNER JOIN `buyingstores` bs ON bs.id = bsi.buyingstore_id
+            WHERE bs.char_id IN (
+                SELECT char_id
+                FROM `char`
+                WHERE account_id = ?
+            )
+            "#,
+        )
+        .bind(account_id)
+        .execute(&mut **tx)
+        .await
+        .context("delete buying store items for account")?;
+
+        Ok(result.rows_affected())
+    }
+
+    async fn delete_character_relation_rows(
+        &self,
+        tx: &mut Transaction<'_, MySql>,
+        table_name: &str,
+        column_name: &str,
+        account_id: i64,
+    ) -> Result<u64> {
+        let sql = format!(
+            r#"
+            DELETE FROM {}
+            WHERE {} IN (
+                SELECT char_id
+                FROM `char`
+                WHERE account_id = ?
+            )
+            "#,
+            quote_identifier(table_name),
+            quote_identifier(column_name),
+        );
+
+        let result = sqlx::query(&sql)
+            .bind(account_id)
+            .execute(&mut **tx)
+            .await
+            .with_context(|| {
+                format!("delete {table_name}.{column_name} rows for account {account_id}")
+            })?;
+
+        Ok(result.rows_affected())
+    }
+
+    async fn delete_account_relation_rows(
+        &self,
+        tx: &mut Transaction<'_, MySql>,
+        table_name: &str,
+        account_id: i64,
+    ) -> Result<u64> {
+        let sql = format!(
+            r#"
+            DELETE FROM {}
+            WHERE `account_id` = ?
+            "#,
+            quote_identifier(table_name),
+        );
+
+        let result = sqlx::query(&sql)
+            .bind(account_id)
+            .execute(&mut **tx)
+            .await
+            .with_context(|| format!("delete {table_name}.account_id rows for account"))?;
+
+        Ok(result.rows_affected())
     }
 
     pub async fn character_quests(
@@ -2196,4 +2694,14 @@ fn database_engine_name(version: &str) -> String {
     } else {
         "MariaDB".to_string()
     }
+}
+
+fn contains_table_name(table_names: &[&str], table_name: &str) -> bool {
+    table_names
+        .iter()
+        .any(|candidate| candidate.eq_ignore_ascii_case(table_name))
+}
+
+fn quote_identifier(identifier: &str) -> String {
+    format!("`{}`", identifier.replace('`', "``"))
 }

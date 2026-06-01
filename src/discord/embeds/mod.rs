@@ -7,6 +7,7 @@ const COLOR_ERROR: Colour = Colour::new(0xED4245);
 const COLOR_INFO: Colour = Colour::new(0x5865F2);
 const COLOR_PURPLE: Colour = Colour::new(0x9B59B6);
 const EMBED_FIELD_VALUE_LIMIT: usize = 1000;
+const EMBED_LIST_SEPARATOR_LEN: usize = 2;
 const COMMAND_DISPLAY_NAME: &str = "rAthena";
 
 struct LimitedList {
@@ -95,7 +96,7 @@ pub fn online_embed(characters: &[CharacterSummary], requested_limit: u32) -> Cr
 
     let list = limited_list(characters, requested_limit, |index, character| {
         format!(
-            "`{:>2}.` **{}** — Niv. `{}` / Job `{}` — {} — `{}`",
+            "`{:>2}.` **{}** — Base `{}` / Job `{}` — {} — Carte `{}`",
             index + 1,
             character.name,
             character.base_level,
@@ -117,20 +118,25 @@ pub fn online_embed(characters: &[CharacterSummary], requested_limit: u32) -> Cr
     .field("Personnages", list.value, false)
 }
 
-pub fn search_embed(query: &str, results: &SearchResults, requested_limit: u32) -> CreateEmbed {
+pub fn search_embed(
+    query: &str,
+    category_label: &str,
+    results: &SearchResults,
+    requested_limit: u32,
+) -> CreateEmbed {
     if results.is_empty() {
         return warning_embed(
             "Recherche rAthenaFR",
             format!(
-                "Aucun personnage, objet ou monstre ne correspond à `{}`.",
-                query
+                "Aucun résultat ne correspond à `{}` dans `{}`.",
+                query, category_label
             ),
         );
     }
 
     let character_list = limited_list(&results.characters, requested_limit, |index, character| {
         format!(
-            "`{:>2}.` **{}** — Niv. `{}` / Job `{}` — {} — `{}`",
+            "`{:>2}.` **{}** — Base `{}` / Job `{}` — {} — Carte `{}`",
             index + 1,
             character.name,
             character.base_level,
@@ -152,7 +158,7 @@ pub fn search_embed(query: &str, results: &SearchResults, requested_limit: u32) 
     });
     let monster_list = limited_list(&results.monsters, requested_limit, |index, monster| {
         format!(
-            "`{:>2}.` **{}** — ID `{}` — Sprite `{}` — Lv. `{}` — HP `{}` — `{}`",
+            "`{:>2}.` **{}** — ID `{}` — Sprite `{}` — Niveau `{}` — HP `{}` — Table `{}`",
             index + 1,
             monster.display_name,
             monster.monster_id,
@@ -165,7 +171,10 @@ pub fn search_embed(query: &str, results: &SearchResults, requested_limit: u32) 
 
     let mut embed = info_embed(
         "Recherche rAthenaFR",
-        format!("Résultats de recherche pour `{}`.", query),
+        format!(
+            "Résultats de recherche pour `{}` dans `{}`.",
+            query, category_label
+        ),
     );
 
     if !results.characters.is_empty() {
@@ -207,7 +216,7 @@ pub fn ranking_embed(entries: &[RankingEntry], requested_limit: u32) -> CreateEm
 
     let list = limited_list(entries, requested_limit, |_index, entry| {
         format!(
-            "`{:>2}.` **{}** — Niv. `{}` / Job `{}` — {} — `{}`",
+            "`{:>2}.` **{}** — Base `{}` / Job `{}` — {} — Carte `{}`",
             entry.rank,
             entry.name,
             entry.base_level,
@@ -236,7 +245,7 @@ pub fn top_zeny_embed(entries: &[ZenyRankingEntry], requested_limit: u32) -> Cre
 
     let list = limited_list(entries, requested_limit, |_index, entry| {
         format!(
-            "`{:>2}.` **{}** — `{}` zeny — Niv. `{}` / Job `{}` — {}",
+            "`{:>2}.` **{}** — `{}` zeny — Base `{}` / Job `{}` — {}",
             entry.rank,
             entry.name,
             format_number(entry.zeny),
@@ -304,7 +313,7 @@ pub fn guilds_embed(guilds: &[GuildSummary], requested_limit: u32) -> CreateEmbe
 
     let list = limited_list(guilds, requested_limit, |index, guild| {
         format!(
-            "`{:>2}.` **{}** — Niv. `{}` — Membres `{}/{}` — Connectés `{}` — Chef `{}`",
+            "`{:>2}.` **{}** — Niveau `{}` — Membres `{}/{}` — Connectés `{}` — Chef `{}`",
             index + 1,
             guild.name,
             guild.level,
@@ -377,7 +386,7 @@ pub fn guild_members_embed(
     let list = limited_list(members, requested_limit, |index, member| {
         let status = if member.online { "🟢" } else { "⚫" };
         format!(
-            "`{:>2}.` {} **{}** — Pos. `{}` — Niv. `{}` / Job `{}` — {} — `{}`",
+            "`{:>2}.` {} **{}** — Position `{}` — Base `{}` / Job `{}` — {} — Carte `{}`",
             index + 1,
             status,
             member.name,
@@ -474,7 +483,7 @@ pub fn map_online_embed(
 
     let list = limited_list(characters, requested_limit, |index, character| {
         format!(
-            "`{:>2}.` **{}** — Niv. `{}` / Job `{}` — {}",
+            "`{:>2}.` **{}** — Base `{}` / Job `{}` — {}",
             index + 1,
             character.name,
             character.base_level,
@@ -547,7 +556,7 @@ pub fn party_members_embed(
         let status = if member.online { "🟢" } else { "⚫" };
         let leader = if member.is_leader { " 👑" } else { "" };
         format!(
-            "`{:>2}.` {} **{}**{} — Niv. `{}` / Job `{}` — {} — `{}`",
+            "`{:>2}.` {} **{}**{} — Base `{}` / Job `{}` — {} — Carte `{}`",
             index + 1,
             status,
             member.name,
@@ -1031,29 +1040,73 @@ pub fn account_created_embed(account: &CreatedAccount) -> CreateEmbed {
     )
 }
 
-pub fn account_manage_owner_only_embed() -> CreateEmbed {
-    error_embed("Commande réservée aux rôles owner configurés.")
-}
-
 pub fn account_delete_result_embed(result: &AccountDeleteResult) -> CreateEmbed {
     match result {
-        AccountDeleteResult::Deleted { account_id, userid } => success_embed(
-            "Compte rAthena supprimé",
-            format!("Le compte `{}` (`{}`) a été supprimé.", userid, account_id),
-        ),
-        AccountDeleteResult::HasRelatedData {
+        AccountDeleteResult::Deleted {
             account_id,
             userid,
             characters,
-            storage_rows,
+            deleted_rows,
+        } => success_embed(
+            "Compte rAthena supprimé",
+            format!(
+                "Le compte `{}` (`{}`) a été supprimé avec `{}` personnage(s) et `{}` ligne(s) supprimées.",
+                userid, account_id, characters, deleted_rows
+            ),
+        ),
+        AccountDeleteResult::HasGuildOwnership {
+            account_id,
+            userid,
+            guilds,
         } => warning_embed(
             "Suppression refusée",
             format!(
-                "Le compte `{}` (`{}`) possède `{}` personnage(s) et `{}` ligne(s) de stockage. La suppression directe est bloquée pour éviter des données orphelines.",
-                userid, account_id, characters, storage_rows
+                "Le compte `{}` (`{}`) possède `{}` guilde(s). Transfère ou dissous ces guildes avant de supprimer le compte complet.",
+                userid, account_id, guilds
             ),
         ),
         AccountDeleteResult::NotFound { account_id } => account_not_found_embed(*account_id),
+    }
+}
+
+pub fn account_update_result_embed(result: &AccountUpdateResult) -> CreateEmbed {
+    match result {
+        AccountUpdateResult::Updated {
+            account_id,
+            userid,
+            changed_fields,
+        } => {
+            let fields = if changed_fields.is_empty() {
+                "Aucun champ modifié.".to_string()
+            } else {
+                changed_fields
+                    .iter()
+                    .map(|field| format!("• {field}"))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            };
+
+            success_embed(
+                "Compte rAthena mis à jour",
+                format!("Le compte `{userid}` (`{account_id}`) a été mis à jour."),
+            )
+            .field("Champs modifiés", fields, false)
+            .field(
+                "Sécurité",
+                "Le mot de passe et les valeurs sensibles ne sont pas réaffichés.",
+                false,
+            )
+        }
+        AccountUpdateResult::UsernameAlreadyExists {
+            account_id,
+            userid,
+        } => warning_embed(
+            "Mise à jour refusée",
+            format!(
+                "Le login `{userid}` existe déjà sur un autre compte. Le compte `{account_id}` n’a pas été modifié."
+            ),
+        ),
+        AccountUpdateResult::NotFound { account_id } => account_not_found_embed(*account_id),
     }
 }
 
@@ -1714,7 +1767,11 @@ where
     let mut value_len = 0;
 
     for (index, item) in items.iter().take(row_limit).enumerate() {
-        if !push_limited_line(&mut lines, &mut value_len, formatter(index, item)) {
+        if !push_limited_line(
+            &mut lines,
+            &mut value_len,
+            format_list_line(formatter(index, item)),
+        ) {
             break;
         }
     }
@@ -1722,7 +1779,7 @@ where
     let displayed_count = lines.len();
 
     LimitedList {
-        value: lines.join("\n"),
+        value: lines.join("\n\n"),
         displayed_count,
         available_count: items.len(),
         row_limit,
@@ -1731,13 +1788,13 @@ where
 
 fn list_summary(list: &LimitedList, noun: &str) -> String {
     let total_text = if list.available_count > list.row_limit {
-        format!("au moins `{}`", list.row_limit + 1)
+        format!("au moins {}", list.row_limit + 1)
     } else {
-        format!("`{}`", list.available_count)
+        list.available_count.to_string()
     };
 
     let mut summary = format!(
-        "Affichage de `{}` sur {} {} correspondants.",
+        "{} affiché(s) sur {} {}.",
         list.displayed_count, total_text, noun
     );
 
@@ -1753,7 +1810,7 @@ fn list_summary(list: &LimitedList, noun: &str) -> String {
     };
 
     if let Some(reason) = hidden_reason {
-        summary.push_str(" D’autres résultats ont été masqués par ");
+        summary.push_str(" Masqué par ");
         summary.push_str(reason);
         summary.push('.');
     }
@@ -1766,7 +1823,11 @@ fn display_limit(requested_limit: u32) -> usize {
 }
 
 fn push_limited_line(lines: &mut Vec<String>, value_len: &mut usize, line: String) -> bool {
-    let separator_len = if lines.is_empty() { 0 } else { 1 };
+    let separator_len = if lines.is_empty() {
+        0
+    } else {
+        EMBED_LIST_SEPARATOR_LEN
+    };
     let available_len = EMBED_FIELD_VALUE_LIMIT.saturating_sub(*value_len + separator_len);
 
     if available_len == 0 {
@@ -1788,6 +1849,26 @@ fn push_limited_line(lines: &mut Vec<String>, value_len: &mut usize, line: Strin
     *value_len += separator_len + line_len;
     lines.push(line);
     true
+}
+
+fn format_list_line(value: String) -> String {
+    let parts = value
+        .split(" — ")
+        .filter(|part| !part.trim().is_empty())
+        .collect::<Vec<_>>();
+
+    if parts.len() <= 1 {
+        return value;
+    }
+
+    let mut formatted = parts[0].trim().to_string();
+
+    for detail in parts.iter().skip(1) {
+        formatted.push_str("\n• ");
+        formatted.push_str(detail.trim());
+    }
+
+    formatted
 }
 
 fn trim_line(value: String, limit: usize) -> String {
@@ -1838,10 +1919,13 @@ mod tests {
 
         let list = limited_list(&items, 2, |_index, item| format!("Ligne {item}"));
 
-        assert_eq!(list.value, "Ligne 1\nLigne 2");
+        assert_eq!(list.value, "Ligne 1\n\nLigne 2");
         assert_eq!(list.displayed_count, 2);
         assert_eq!(list.available_count, 3);
-        assert_eq!(list_summary(&list, "lignes"), "Affichage de `2` sur au moins `3` lignes correspondants. D’autres résultats ont été masqués par la limite d’affichage configurée.");
+        assert_eq!(
+            list_summary(&list, "lignes"),
+            "2 affiché(s) sur au moins 3 lignes. Masqué par la limite d’affichage configurée."
+        );
     }
 
     #[test]
@@ -1850,11 +1934,19 @@ mod tests {
 
         let list = limited_list(&items, 5, |_index, item| format!("Ligne {item}"));
 
-        assert_eq!(list.value, "Ligne 1\nLigne 2");
-        assert_eq!(
-            list_summary(&list, "lignes"),
-            "Affichage de `2` sur `2` lignes correspondants."
-        );
+        assert_eq!(list.value, "Ligne 1\n\nLigne 2");
+        assert_eq!(list_summary(&list, "lignes"), "2 affiché(s) sur 2 lignes.");
+    }
+
+    #[test]
+    fn limited_list_formats_details_as_bullets() {
+        let items = vec![1];
+
+        let list = limited_list(&items, 1, |_index, _item| {
+            "**Alice** — Base `99` — Carte `prontera`".to_string()
+        });
+
+        assert_eq!(list.value, "**Alice**\n• Base `99`\n• Carte `prontera`");
     }
 
     #[test]

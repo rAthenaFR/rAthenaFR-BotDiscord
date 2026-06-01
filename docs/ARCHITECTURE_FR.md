@@ -2,6 +2,9 @@
 
 Documentation française de rAthenaFR Discord Bot pour le projet rAthena.
 
+> [!NOTE]
+> Le bot est majoritairement en lecture seule. Les seules écritures prévues sont les commandes de compte explicitement documentées.
+
 ## Structure principale
 
 ```text
@@ -19,9 +22,12 @@ src/
 1. Discord reçoit une commande slash.
 2. `dispatcher.rs` route vers le handler adapté.
 3. Le handler valide les options et les rôles si nécessaire.
-4. `database.rs` exécute une requête SQL en lecture seule.
+4. `database.rs` exécute la requête SQL adaptée.
 5. `embeds/mod.rs` construit la réponse française.
 6. Discord reçoit un embed public ou éphémère.
+
+> [!TIP]
+> Le rendu Discord est centralisé dans `src/discord/embeds/mod.rs`. Pour améliorer l’affichage de toutes les commandes, commence par ce fichier plutôt que par chaque handler.
 
 ## Séparation des responsabilités
 
@@ -31,6 +37,9 @@ src/
 - `rathenafr/database.rs` : requêtes SQL.
 - `rathenafr/models.rs` : structures partagées.
 - `rathenafr/status.rs` : checks TCP login/char/map.
+
+> [!IMPORTANT]
+> Les commandes staff doivent répondre en éphémère et ne doivent jamais afficher de secrets ou de données sensibles.
 
 ## Ajout propre d’une commande
 

@@ -67,23 +67,87 @@ fn accountoverview_command() -> CreateCommand {
 
 fn accountmanage_command() -> CreateCommand {
     CreateCommand::new("accountmanage")
-        .description("Owner uniquement : gère un compte utilisateur rAthena.")
+        .description("GM uniquement : gère complètement un compte utilisateur rAthena.")
         .add_option(account_id_option())
         .add_option(
-            CreateCommandOption::new(
-                CommandOptionType::String,
-                "action",
-                "Action à effectuer : delete.",
-            )
-            .required(true),
+            CreateCommandOption::new(CommandOptionType::String, "action", "Action à effectuer.")
+                .required(true)
+                .add_string_choice("Éditer le compte", "edit")
+                .add_string_choice("Supprimer tout le compte", "delete"),
         )
         .add_option(
             CreateCommandOption::new(
                 CommandOptionType::String,
                 "confirm",
-                "Confirmation exacte : DELETE-ID.",
+                "Confirmation pour delete : DELETE-ALL-ID.",
             )
-            .required(true),
+            .required(false),
+        )
+        .add_option(
+            CreateCommandOption::new(CommandOptionType::String, "username", "Nouveau login.")
+                .required(false),
+        )
+        .add_option(
+            CreateCommandOption::new(
+                CommandOptionType::String,
+                "password",
+                "Nouveau mot de passe.",
+            )
+            .required(false),
+        )
+        .add_option(
+            CreateCommandOption::new(CommandOptionType::String, "sex", "Sexe du compte.")
+                .required(false)
+                .add_string_choice("Homme", "M")
+                .add_string_choice("Femme", "F"),
+        )
+        .add_option(
+            CreateCommandOption::new(
+                CommandOptionType::String,
+                "birthdate",
+                "Nouvelle date de naissance au format YYYY-MM-DD.",
+            )
+            .required(false),
+        )
+        .add_option(
+            CreateCommandOption::new(CommandOptionType::String, "email", "Nouvel email.")
+                .required(false),
+        )
+        .add_option(
+            CreateCommandOption::new(CommandOptionType::Integer, "group_id", "Nouveau group_id.")
+                .required(false),
+        )
+        .add_option(
+            CreateCommandOption::new(
+                CommandOptionType::Integer,
+                "state",
+                "Nouvel état du compte.",
+            )
+            .required(false),
+        )
+        .add_option(
+            CreateCommandOption::new(
+                CommandOptionType::Integer,
+                "unban_time",
+                "Nouveau timestamp de fin de bannissement, 0 pour aucun.",
+            )
+            .required(false),
+        )
+        .add_option(
+            CreateCommandOption::new(
+                CommandOptionType::Integer,
+                "expiration_time",
+                "Nouveau timestamp d’expiration, 0 pour aucune.",
+            )
+            .required(false),
+        )
+        .add_option(
+            CreateCommandOption::new(
+                CommandOptionType::Integer,
+                "character_slots",
+                "Nouveau nombre de slots de personnages.",
+            )
+            .required(false),
         )
 }
 

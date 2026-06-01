@@ -2,6 +2,9 @@
 
 Documentation française de rAthenaFR Discord Bot pour le projet rAthena.
 
+> [!NOTE]
+> Les exemples complets sont dans `.env.example` et `.env.docker.example`. Cette page décrit le sens des variables, pas les secrets réels.
+
 ## Variables Discord
 
 ```env
@@ -13,6 +16,9 @@ DISCORD_GUILD_ID=replace_me
 `DISCORD_GUILD_ID` permet de déployer les commandes slash sur un serveur Discord précis.
 
 `DISCORD_APPLICATION_ID` est optionnel. Si la variable est absente, le bot utilise `DISCORD_CLIENT_ID`.
+
+> [!WARNING]
+> Ne commit jamais `DISCORD_TOKEN` ni un fichier `.env` réel.
 
 ## Rôles Discord staff
 
@@ -26,6 +32,9 @@ Les valeurs sont des IDs de rôles Discord séparés par des virgules. Laisse vi
 
 Les anciens alias `DISCORD_STAFF_ROLE_IDS`, `DISCORD_ADMIN_ROLE_IDS` et `DISCORD_OWNER_ROLE_IDS` restent acceptés si les variables `RATHENAFR_*` correspondantes sont absentes.
 
+> [!IMPORTANT]
+> Les commandes staff, dont `/accountmanage`, sont refusées si aucun rôle staff/admin/owner n’est configuré.
+
 ## Création de compte
 
 ```env
@@ -38,6 +47,9 @@ La commande `/createaccount` est déclarée dans Discord, mais elle refuse la cr
 `RATHENAFR_ACCOUNT_PASSWORD_MODE` accepte `plain` ou `md5`. Sa valeur doit correspondre à la configuration du serveur login rAthena.
 
 Cette fonctionnalité écrit dans la table `login`. Elle nécessite donc les permissions SQL optionnelles décrites dans `docs/DATABASE_FR.md`.
+
+> [!CAUTION]
+> `/accountmanage` utilise aussi les permissions SQL de gestion de comptes pour éditer ou supprimer un compte. Consulte `docs/ACCOUNT_MANAGEMENT_FR.md` avant de l’activer.
 
 ## Nom visible
 
@@ -61,6 +73,9 @@ RATHENAFR_DB_ACQUIRE_TIMEOUT_SECONDS=5
 
 Utilise un compte SQL dédié avec uniquement `SELECT`.
 
+> [!TIP]
+> Ajoute les droits `INSERT`/`UPDATE`/`DELETE` seulement si tu utilises les commandes de compte.
+
 ## Services rAthena
 
 ```env
@@ -73,6 +88,9 @@ RATHENAFR_MAP_PORT=5121
 Des overrides existent : `RATHENAFR_LOGIN_HOST`, `RATHENAFR_CHAR_HOST`, `RATHENAFR_MAP_HOST`.
 
 Sur un serveur distant, ces hôtes doivent être joignables depuis le conteneur du bot. Utilise un réseau Docker partagé, une IP privée, un DNS privé ou un VPN.
+
+> [!WARNING]
+> N’expose pas les ports MariaDB/MySQL, login, char ou map directement sur Internet.
 
 ## Visibilité et limites
 

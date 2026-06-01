@@ -2,6 +2,9 @@
 
 Documentation française de rAthenaFR Discord Bot pour le projet rAthena.
 
+> [!NOTE]
+> Pour une installation sur serveur, consulte plutôt `DEPLOYMENT_FR.md`.
+
 ## Prérequis
 
 - Rust stable avec Cargo.
@@ -28,6 +31,9 @@ RATHENAFR_DB_USER=rathenafr_bot
 RATHENAFR_DB_PASSWORD=replace_me
 ```
 
+> [!WARNING]
+> Remplace toutes les valeurs `replace_me` avant de lancer le bot.
+
 Déploie les commandes slash :
 
 ```bash
@@ -49,6 +55,9 @@ docker compose up -d --build
 
 Le service attend le réseau Docker externe `athena-network`.
 
+> [!TIP]
+> Crée le réseau avec `docker network create athena-network` s’il n’existe pas encore.
+
 ## Mise en ligne
 
 Pour un VPS, un serveur dédié ou une machine distante, utilise la procédure dédiée :
@@ -58,3 +67,6 @@ docs/DEPLOYMENT_FR.md
 ```
 
 Le principe recommandé reste Docker, avec une base MariaDB/MySQL joignable par réseau privé ou réseau Docker, jamais exposée publiquement.
+
+> [!IMPORTANT]
+> Les commandes de compte nécessitent des permissions SQL supplémentaires. Consulte `ACCOUNT_MANAGEMENT_FR.md` avant de les activer.

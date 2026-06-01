@@ -301,12 +301,58 @@ pub enum AccountDeleteResult {
     Deleted {
         account_id: i64,
         userid: String,
+        characters: i64,
+        deleted_rows: u64,
     },
-    HasRelatedData {
+    HasGuildOwnership {
         account_id: i64,
         userid: String,
-        characters: i64,
-        storage_rows: i64,
+        guilds: i64,
+    },
+    NotFound {
+        account_id: i64,
+    },
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct AccountUpdateRequest {
+    pub userid: Option<String>,
+    pub password: Option<String>,
+    pub sex: Option<String>,
+    pub birthdate: Option<String>,
+    pub email: Option<String>,
+    pub group_id: Option<i32>,
+    pub state: Option<i64>,
+    pub unban_time: Option<i64>,
+    pub expiration_time: Option<i64>,
+    pub character_slots: Option<i32>,
+}
+
+impl AccountUpdateRequest {
+    pub fn is_empty(&self) -> bool {
+        self.userid.is_none()
+            && self.password.is_none()
+            && self.sex.is_none()
+            && self.birthdate.is_none()
+            && self.email.is_none()
+            && self.group_id.is_none()
+            && self.state.is_none()
+            && self.unban_time.is_none()
+            && self.expiration_time.is_none()
+            && self.character_slots.is_none()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum AccountUpdateResult {
+    Updated {
+        account_id: i64,
+        userid: String,
+        changed_fields: Vec<String>,
+    },
+    UsernameAlreadyExists {
+        account_id: i64,
+        userid: String,
     },
     NotFound {
         account_id: i64,

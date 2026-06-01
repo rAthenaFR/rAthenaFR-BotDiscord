@@ -2,6 +2,9 @@
 
 Documentation française de rAthenaFR Discord Bot pour le projet rAthena.
 
+> [!NOTE]
+> Le service Docker du bot n’a pas besoin de port entrant publié.
+
 ## Démarrage
 
 ```bash
@@ -19,6 +22,9 @@ rathenafr-discord-bot
 
 Il utilise le réseau externe `athena-network`, prévu pour communiquer avec les conteneurs rAthena existants.
 
+> [!WARNING]
+> Si `athena-network` n’existe pas, `docker compose up` échoue. Crée-le avec `docker network create athena-network`.
+
 ## Bonnes pratiques
 
 - Ne publie pas MariaDB sur Internet.
@@ -30,6 +36,9 @@ Il utilise le réseau externe `athena-network`, prévu pour communiquer avec les
 ```bash
 docker compose logs -f rathenafr-discord-bot
 ```
+
+> [!IMPORTANT]
+> Si tu actives les commandes de compte, adapte les permissions SQL avant de lancer le bot en production.
 
 ## Déployer les commandes via Docker
 
@@ -48,6 +57,9 @@ docker network create athena-network
 ```
 
 Si MariaDB n’est pas dans Docker, configure `RATHENAFR_DB_HOST` avec une IP privée, un DNS privé ou un tunnel réseau. Ne publie pas le port `3306` sur Internet.
+
+> [!CAUTION]
+> `RATHENAFR_DB_HOST=127.0.0.1` dans un conteneur pointe vers le conteneur lui-même, pas vers l’hôte Docker.
 
 Voir aussi :
 

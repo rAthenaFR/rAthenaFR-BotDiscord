@@ -2,9 +2,12 @@
 
 Documentation française de rAthenaFR Discord Bot pour le projet rAthena.
 
+> [!NOTE]
+> Les contributions doivent conserver une documentation française cohérente avec le code.
+
 ## Objectif du projet
 
-rAthenaFR Discord Bot lit une base compatible rAthena et affiche des informations utiles dans Discord sans modifier les données.
+rAthenaFR Discord Bot lit une base compatible rAthena et affiche des informations utiles dans Discord. Les écritures sont limitées aux commandes de compte explicitement documentées.
 
 ## Règles obligatoires
 
@@ -13,6 +16,9 @@ rAthenaFR Discord Bot lit une base compatible rAthena et affiche des information
 - Commandes staff protégées par rôle.
 - Documentation française à jour.
 - Aucun retour au nom historique du projet.
+
+> [!WARNING]
+> Toute nouvelle écriture SQL doit être justifiée, documentée dans `docs/`, protégée côté rôles Discord et couverte par des garde-fous.
 
 ## Ajouter une commande publique
 
@@ -24,9 +30,15 @@ rAthenaFR Discord Bot lit une base compatible rAthena et affiche des information
 6. Ajouter le handler dans `dispatcher.rs`.
 7. Déployer avec `cargo run -- --deploy`.
 
+> [!TIP]
+> Si tu changes seulement le rendu d’un embed, le redéploiement des commandes Discord n’est pas nécessaire.
+
 ## Ajouter une commande staff
 
 Même flux, mais dans `staff.rs`, avec vérification des rôles et réponse éphémère. N’affiche jamais `email`, `last_ip`, `user_pass`, tokens ou PINs.
+
+> [!IMPORTANT]
+> Les commandes staff doivent être ajoutées à la liste des commandes sensibles non cacheables si elles exposent des données privées.
 
 ## Revue avant PR
 
