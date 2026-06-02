@@ -1572,7 +1572,7 @@ impl RAthenaFrDatabase {
         mode: &str,
         map: Option<&str>,
         color: Option<&str>,
-        message: &str,
+        message: &[u8],
         discord_user_id: u64,
         discord_username: &str,
     ) -> Result<()> {
@@ -1594,7 +1594,7 @@ impl RAthenaFrDatabase {
         .bind(map)
         .bind(color)
         .bind(message)
-        .bind(discord_user_id)
+        .bind(discord_user_id.to_string())
         .bind(discord_username)
         .execute(&self.pool)
         .await
