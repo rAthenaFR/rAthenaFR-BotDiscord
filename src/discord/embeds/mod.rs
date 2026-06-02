@@ -1,4 +1,3 @@
-use crate::config::AssetConfig;
 use crate::rathenafr::*;
 use serenity::all::{Colour, CreateEmbed, Timestamp};
 
@@ -116,189 +115,6 @@ pub fn online_embed(characters: &[CharacterSummary], requested_limit: u32) -> Cr
         false,
     )
     .field("Personnages", list.value, false)
-}
-
-pub fn search_embeds(
-    query: &str,
-    category_label: &str,
-    results: &SearchResults,
-    requested_limit: u32,
-    assets: &AssetConfig,
-) -> Vec<CreateEmbed> {
-    if results.is_empty() {
-        return vec![warning_embed(
-            "Recherche rAthenaFR",
-            format!(
-                "Aucun résultat ne correspond à `{}` dans `{}`.",
-                query, category_label
-            ),
-        )];
-    }
-
-    let character_list = limited_list(&results.characters, requested_limit, |index, character| {
-        format!(
-            "`{:>2}.` **{}** — Base `{}` / Job `{}` — {} — Carte `{}`",
-            index + 1,
-            character.name,
-            character.base_level,
-            character.job_level,
-            job_name(character.class_id),
-            character.map,
-        )
-    });
-    let item_list = limited_list(&results.items, requested_limit, |index, item| {
-        format!(
-            "`{:>2}.` **{}** — ID `{}` — Type `{}` — `{}` — `{}`",
-            index + 1,
-            item.display_name,
-            item.item_id,
-            item.item_type,
-            item.aegis_name,
-            item.source_table,
-        )
-    });
-    let monster_list = limited_list(&results.monsters, requested_limit, |index, monster| {
-        format!(
-            "`{:>2}.` **{}** — ID `{}` — Sprite `{}` — Niveau `{}` — HP `{}` — Table `{}`",
-            index + 1,
-            monster.display_name,
-            monster.monster_id,
-            monster.sprite,
-            monster.level,
-            format_number(monster.hp),
-            monster.source_table,
-        )
-    });
-
-    let mut embed = info_embed(
-        "Recherche rAthenaFR",
-        format!(
-            "Résultats de recherche pour `{}` dans `{}`.",
-            query, category_label
-        ),
-    );
-
-    if !results.characters.is_empty() {
-        embed = embed
-            .field(
-                "Résumé personnages",
-                list_summary(&character_list, "personnages"),
-                false,
-            )
-            .field("Personnages", character_list.value, false);
-    }
-
-    if !results.items.is_empty() {
-        embed = embed
-            .field("Résumé objets", list_summary(&item_list, "objets"), false)
-            .field("Objets", item_list.value, false);
-    }
-
-    if !results.monsters.is_empty() {
-        embed = embed
-            .field(
-                "Résumé monstres",
-                list_summary(&monster_list, "monstres"),
-                false,
-            )
-            .field("Monstres", monster_list.value, false);
-    }
-
-    if let Some(url) = search_primary_image_url(assets, results) {
-        embed = embed.image(url);
-    }
-
-    vec![embed]
-}
-
-fn character_image_url(assets: &AssetConfig, character: &CharacterSummary) -> Option<String> {
-    let replacements = [
-        ("class_id", character.class_id.to_string()),
-        ("gender", character_image_gender(character).to_string()),
-        (
-            "job",
-            job_sprite_name(character.class_id)
-                .unwrap_or("")
-                .to_string(),
-        ),
-    ];
-
-    asset_url(
-        assets.base_url.as_deref(),
-        assets.character_image_path.as_deref()?,
-        &replacements,
-    )
-}
-
-fn search_primary_image_url(assets: &AssetConfig, results: &SearchResults) -> Option<String> {
-    results
-        .items
-        .first()
-        .and_then(|item| item_image_url(assets, item))
-        .or_else(|| {
-            results
-                .monsters
-                .first()
-                .and_then(|monster| monster_image_url(assets, monster))
-        })
-        .or_else(|| {
-            results
-                .characters
-                .first()
-                .and_then(|character| character_image_url(assets, character))
-        })
-}
-
-fn item_image_url(assets: &AssetConfig, item: &ItemSearchEntry) -> Option<String> {
-    let replacements = [("item_id", item.item_id.to_string())];
-
-    asset_url(
-        assets.base_url.as_deref(),
-        &assets.item_icon_path,
-        &replacements,
-    )
-}
-
-fn monster_image_url(assets: &AssetConfig, monster: &MonsterSearchEntry) -> Option<String> {
-    let replacements = [
-        ("monster_id", monster.monster_id.to_string()),
-        ("sprite", monster.sprite.clone()),
-    ];
-
-    asset_url(
-        assets.base_url.as_deref(),
-        &assets.monster_image_path,
-        &replacements,
-    )
-}
-
-fn character_image_gender(character: &CharacterSummary) -> &'static str {
-    match character.sex.as_deref().map(str::trim) {
-        Some("F") | Some("f") => "F",
-        _ => "M",
-    }
-}
-
-fn asset_url(
-    base_url: Option<&str>,
-    path_template: &str,
-    replacements: &[(&str, String)],
-) -> Option<String> {
-    let path = replacements
-        .iter()
-        .fold(path_template.to_string(), |path, (key, value)| {
-            path.replace(&format!("{{{key}}}"), &urlencoding::encode(value.trim()))
-        });
-    let path = path.trim_start_matches('/');
-
-    if path.is_empty() {
-        None
-    } else if path.starts_with("http://") || path.starts_with("https://") {
-        Some(path.to_string())
-    } else {
-        let base_url = base_url?;
-        Some(format!("{base_url}/{path}"))
-    }
 }
 
 pub fn ranking_embed(entries: &[RankingEntry], requested_limit: u32) -> CreateEmbed {
@@ -501,32 +317,6 @@ pub fn guild_members_embed(
     .field("Membres", list.value, false)
 }
 
-pub fn classes_embed(entries: &[ClassDistributionEntry], requested_limit: u32) -> CreateEmbed {
-    if entries.is_empty() {
-        return warning_embed(
-            "Répartition des classes rAthena",
-            "Aucun personnage visible trouvé.",
-        );
-    }
-
-    let list = limited_list(entries, requested_limit, |_index, entry| {
-        format!(
-            "`{:>2}.` **{}** — Personnages `{}` — Connectés `{}`",
-            entry.rank,
-            job_name(entry.class_id),
-            entry.characters,
-            entry.online_characters,
-        )
-    });
-
-    info_embed(
-        "Répartition des classes rAthenaFR",
-        "Personnages visibles regroupés par `char.class`.",
-    )
-    .field("Résumé", list_summary(&list, "lignes de classes"), false)
-    .field("Classes", list.value, false)
-}
-
 pub fn map_stats_embed(
     entries: &[MapStatsEntry],
     online_only: bool,
@@ -560,203 +350,6 @@ pub fn map_stats_embed(
     )
     .field("Résumé", list_summary(&list, "lignes de cartes"), false)
     .field("Cartes", list.value, false)
-}
-
-pub fn map_online_embed(
-    map: &str,
-    characters: &[CharacterSummary],
-    requested_limit: u32,
-) -> CreateEmbed {
-    if characters.is_empty() {
-        return warning_embed(
-            "Personnages connectés par carte rAthenaFR",
-            format!("Aucun personnage visible connecté trouvé sur `{}`.", map),
-        );
-    }
-
-    let list = limited_list(characters, requested_limit, |index, character| {
-        format!(
-            "`{:>2}.` **{}** — Base `{}` / Job `{}` — {}",
-            index + 1,
-            character.name,
-            character.base_level,
-            character.job_level,
-            job_name(character.class_id),
-        )
-    });
-
-    success_embed(
-        "Personnages connectés par carte rAthenaFR",
-        format!("Personnages visibles connectés sur `{}`.", map),
-    )
-    .field(
-        "Résumé",
-        list_summary(&list, "personnages connectés"),
-        false,
-    )
-    .field("Personnages", list.value, false)
-}
-
-pub fn party_embed(party: &PartyDetails) -> CreateEmbed {
-    success_embed(
-        "Profil de groupe rAthenaFR",
-        format!("Informations détaillées du groupe **{}**.", party.name),
-    )
-    .field(
-        "Chef",
-        party
-            .leader_name
-            .as_deref()
-            .filter(|name| !name.is_empty())
-            .unwrap_or("Inconnu"),
-        true,
-    )
-    .field("Membres", format!("`{}`", party.members), true)
-    .field(
-        "Membres connectés",
-        format!("`{}`", party.online_members),
-        true,
-    )
-    .field("Mode EXP", party_exp_mode(party.exp_mode), true)
-    .field("Mode objets", party_item_mode(party.item_mode), true)
-}
-
-pub fn party_not_found_embed(name: &str) -> CreateEmbed {
-    warning_embed(
-        "Recherche de groupe rAthenaFR",
-        format!("Aucun groupe ne correspond à `{}`.", name),
-    )
-}
-
-pub fn party_members_embed(
-    party_name: &str,
-    members: &[PartyMemberSummary],
-    requested_limit: u32,
-) -> CreateEmbed {
-    if members.is_empty() {
-        return warning_embed(
-            "Membres de groupe rAthenaFR",
-            format!(
-                "Aucun membre visible trouvé pour le groupe `{}`.",
-                party_name
-            ),
-        );
-    }
-
-    let list = limited_list(members, requested_limit, |index, member| {
-        let status = if member.online { "🟢" } else { "⚫" };
-        let leader = if member.is_leader { " 👑" } else { "" };
-        format!(
-            "`{:>2}.` {} **{}**{} — Base `{}` / Job `{}` — {} — Carte `{}`",
-            index + 1,
-            status,
-            member.name,
-            leader,
-            member.base_level,
-            member.job_level,
-            job_name(member.class_id),
-            member.map,
-        )
-    });
-
-    info_embed(
-        "Membres de groupe rAthenaFR",
-        format!("Membres visibles du groupe `{}`.", party_name),
-    )
-    .field("Résumé", list_summary(&list, "membres du groupe"), false)
-    .field("Membres", list.value, false)
-}
-
-pub fn homunculus_embed(homunculus: &HomunculusProfile) -> CreateEmbed {
-    let alive = if homunculus.alive {
-        "🟢 Vivant"
-    } else {
-        "⚫ Non vivant"
-    };
-    let vaporized = if homunculus.vaporized { "Oui" } else { "Non" };
-    let autofeed = if homunculus.autofeed {
-        "Activé"
-    } else {
-        "Désactivé"
-    };
-
-    success_embed(
-        "Profil d’homoncule rAthenaFR",
-        format!("Homoncule possédé par **{}**.", homunculus.owner_name),
-    )
-    .field("Nom", homunculus.name.clone(), true)
-    .field("ID classe", format!("`{}`", homunculus.class_id), true)
-    .field("Niveau", format!("`{}`", homunculus.level), true)
-    .field("Statut", alive, true)
-    .field("Vaporisé", vaporized, true)
-    .field("Auto-nourrissage", autofeed, true)
-    .field("Intimité", format!("`{}`", homunculus.intimacy), true)
-    .field("Faim", format!("`{}`", homunculus.hunger), true)
-    .field(
-        "HP / SP",
-        format!(
-            "HP `{}/{}` — SP `{}/{}`",
-            homunculus.hp, homunculus.max_hp, homunculus.sp, homunculus.max_sp
-        ),
-        false,
-    )
-}
-
-pub fn homunculus_not_found_embed(character: &str) -> CreateEmbed {
-    warning_embed(
-        "Recherche d’homoncule rAthenaFR",
-        format!("Aucun homoncule visible trouvé pour `{}`.", character),
-    )
-}
-
-pub fn pet_embed(pet: &PetProfile) -> CreateEmbed {
-    let incubated = if pet.incubated { "Oui" } else { "Non" };
-    let autofeed = if pet.autofeed {
-        "Activé"
-    } else {
-        "Désactivé"
-    };
-
-    success_embed(
-        "Profil de familier rAthenaFR",
-        format!("Familier possédé par **{}**.", pet.owner_name),
-    )
-    .field("Nom", pet.name.clone(), true)
-    .field("ID classe", format!("`{}`", pet.class_id), true)
-    .field("Niveau", format!("`{}`", pet.level), true)
-    .field("Intimité", format!("`{}`", pet.intimacy), true)
-    .field("Faim", format!("`{}`", pet.hunger), true)
-    .field("Incubé", incubated, true)
-    .field("Auto-nourrissage", autofeed, true)
-}
-
-pub fn pet_not_found_embed(character: &str) -> CreateEmbed {
-    warning_embed(
-        "Recherche de familier rAthenaFR",
-        format!("Aucun familier visible trouvé pour `{}`.", character),
-    )
-}
-
-pub fn zeny_embed(summary: &ZenySummary) -> CreateEmbed {
-    let richest = match &summary.richest_name {
-        Some(name) if !name.is_empty() => format!(
-            "**{}** — `{}` zeny",
-            name,
-            format_number(summary.richest_zeny)
-        ),
-        _ => "Aucun".to_string(),
-    };
-
-    CreateEmbed::new()
-        .title(brand_text("Statistiques zeny rAthenaFR"))
-        .description(brand_text("Statistiques de zeny visibles depuis la base rAthenaFR ciblée. Les personnages GM peuvent être exclus via les filtres de classement."))
-        .color(COLOR_PURPLE)
-        .footer(serenity::all::CreateEmbedFooter::new(footer_text()))
-        .timestamp(Timestamp::now())
-        .field("Personnages comptés", format!("`{}`", summary.character_count), true)
-        .field("Zeny total", format!("`{}`", format_number(summary.total_zeny)), true)
-        .field("Zeny moyen", format!("`{}`", format_number(summary.average_zeny)), true)
-        .field("Personnage visible le plus riche", richest, false)
 }
 
 pub fn castles_embed(castles: &[CastleSummary], requested_limit: u32) -> CreateEmbed {
@@ -837,160 +430,6 @@ pub fn castle_not_found_embed(castle_id: i64) -> CreateEmbed {
     )
 }
 
-pub fn guild_alliances_embed(
-    guild_name: &str,
-    alliances: &[GuildAllianceEntry],
-    requested_limit: u32,
-) -> CreateEmbed {
-    if alliances.is_empty() {
-        return warning_embed(
-            "Alliances de guilde rAthenaFR",
-            format!(
-                "Aucune alliance ou opposition trouvée pour la guilde `{}`.",
-                guild_name
-            ),
-        );
-    }
-
-    let list = limited_list(alliances, requested_limit, |_index, entry| {
-        let icon = if entry.relation == "Opposition" {
-            "⚔️"
-        } else {
-            "🤝"
-        };
-        format!(
-            "{} **{}** — `{}` — ID guilde `{}`",
-            icon, entry.target_name, entry.relation, entry.target_guild_id,
-        )
-    });
-
-    info_embed(
-        "Alliances de guilde rAthenaFR",
-        format!("Alliances et oppositions de la guilde `{}`.", guild_name),
-    )
-    .field("Résumé", list_summary(&list, "relations de guilde"), false)
-    .field("Relations", list.value, false)
-}
-
-pub fn guild_skills_embed(
-    guild_name: &str,
-    skills: &[GuildSkillEntry],
-    requested_limit: u32,
-) -> CreateEmbed {
-    if skills.is_empty() {
-        return warning_embed(
-            "Compétences de guilde rAthenaFR",
-            format!(
-                "Aucune compétence de guilde apprise trouvée pour `{}`.",
-                guild_name
-            ),
-        );
-    }
-
-    let list = limited_list(skills, requested_limit, |_index, skill| {
-        format!(
-            "ID compétence `{}` — Niveau `{}`",
-            skill.skill_id, skill.level
-        )
-    });
-
-    info_embed(
-        "Compétences de guilde rAthenaFR",
-        format!("Compétences apprises par la guilde `{}`.", guild_name),
-    )
-    .field(
-        "Résumé",
-        list_summary(&list, "compétences de guilde"),
-        false,
-    )
-    .field("Compétences", list.value, false)
-}
-
-pub fn homunculus_top_embed(
-    entries: &[HomunculusRankingEntry],
-    requested_limit: u32,
-) -> CreateEmbed {
-    if entries.is_empty() {
-        return warning_embed(
-            "Classement des homoncules rAthenaFR",
-            "Aucun homoncule visible trouvé.",
-        );
-    }
-
-    let list = limited_list(entries, requested_limit, |_index, entry| {
-        format!(
-            "`{:>2}.` **{}** — Propriétaire `{}` — ID classe `{}` — Niv. `{}` — Intimité `{}` — Faim `{}`",
-            entry.rank,
-            entry.name,
-            entry.owner_name,
-            entry.class_id,
-            entry.level,
-            entry.intimacy,
-            entry.hunger,
-        )
-    });
-
-    info_embed(
-        "Classement des homoncules rAthenaFR",
-        "Meilleurs homoncules par niveau et intimité.",
-    )
-    .field("Résumé", list_summary(&list, "entrées d’homoncules"), false)
-    .field("Classement", list.value, false)
-}
-
-pub fn pet_top_embed(entries: &[PetRankingEntry], requested_limit: u32) -> CreateEmbed {
-    if entries.is_empty() {
-        return warning_embed(
-            "Classement des familiers rAthenaFR",
-            "Aucun familier visible trouvé.",
-        );
-    }
-
-    let list = limited_list(entries, requested_limit, |_index, entry| {
-        format!(
-            "`{:>2}.` **{}** — Propriétaire `{}` — ID classe `{}` — Niv. `{}` — Intimité `{}` — Faim `{}`",
-            entry.rank,
-            entry.name,
-            entry.owner_name,
-            entry.class_id,
-            entry.level,
-            entry.intimacy,
-            entry.hunger,
-        )
-    });
-
-    info_embed(
-        "Classement des familiers rAthenaFR",
-        "Meilleurs familiers par intimité et niveau.",
-    )
-    .field("Résumé", list_summary(&list, "entrées de familiers"), false)
-    .field("Classement", list.value, false)
-}
-
-pub fn quest_stats_embed(stats: &QuestStats) -> CreateEmbed {
-    if stats.total_characters == 0 {
-        return warning_embed(
-            "Statistiques de quête rAthenaFR",
-            format!(
-                "Aucun personnage visible n’a la quête ID `{}` dans la base de données.",
-                stats.quest_id
-            ),
-        );
-    }
-
-    info_embed(
-        "Statistiques de quête rAthenaFR",
-        format!(
-            "Statistiques globales pour la quête ID `{}`.",
-            stats.quest_id
-        ),
-    )
-    .field("Personnages", format!("`{}`", stats.total_characters), true)
-    .field("État 0", format!("`{}`", stats.state_0), true)
-    .field("État 1", format!("`{}`", stats.state_1), true)
-    .field("État 2", format!("`{}`", stats.state_2), true)
-}
-
 pub fn account_characters_embed(
     account_id: i64,
     characters: &[AccountCharacterSummary],
@@ -1038,6 +477,28 @@ pub fn account_characters_embed(
         false,
     )
     .field("Personnages", list.value, false)
+}
+
+pub fn account_creation_disabled_embed() -> CreateEmbed {
+    warning_embed(
+        "Création de compte désactivée",
+        "La commande `/createaccount` existe, mais la création publique est désactivée sur ce bot.",
+    )
+}
+
+pub fn account_created_embed(account: &CreatedAccount) -> CreateEmbed {
+    success_embed(
+        "Compte rAthena créé",
+        format!("Le compte `{}` a été créé.", account.userid),
+    )
+    .field("ID compte", format!("`{}`", account.account_id), true)
+    .field("Sexe", format!("`{}`", account.sex), true)
+    .field("Email", format!("`{}`", account.email), true)
+    .field(
+        "Important",
+        "Le mot de passe n’est jamais réaffiché par le bot.",
+        false,
+    )
 }
 
 pub fn account_status_embed(status: &AccountStatus) -> CreateEmbed {
@@ -1091,149 +552,6 @@ pub fn account_status_embed(status: &AccountStatus) -> CreateEmbed {
         true,
     )
     .field("Expiration", unix_time_field(status.expiration_time), true)
-}
-
-pub fn account_list_embed(accounts: &AccountList, requested_limit: u32) -> CreateEmbed {
-    if accounts.entries.is_empty() {
-        return warning_embed(
-            "Liste des comptes rAthenaFR",
-            "Aucun compte trouvé dans la table login.",
-        );
-    }
-
-    let list = limited_list(&accounts.entries, requested_limit, |index, account| {
-        let row_number = accounts.offset as usize + index + 1;
-        format!(
-            "`{:>2}.` Compte `{}` — `{}` — Sexe `{}` — Groupe `{}` — {} — Personnages `{}` — Dernière connexion `{}`",
-            row_number,
-            account.account_id,
-            account.userid,
-            account.sex,
-            account.group_id,
-            account_state(account.state),
-            account.characters,
-            account.lastlogin.as_deref().unwrap_or("Jamais"),
-        )
-    });
-
-    info_embed(
-        "Liste des comptes rAthenaFR",
-        "Comptes créés dans la table login, triés du plus récent au plus ancien par account_id.",
-    )
-    .field(
-        "Total comptes",
-        format!("`{}`", format_number(accounts.total_accounts)),
-        true,
-    )
-    .field(
-        "Page",
-        format!(
-            "`{}` — `{}` comptes par page",
-            accounts.page, accounts.per_page
-        ),
-        true,
-    )
-    .field("Résumé", list_summary(&list, "comptes"), false)
-    .field("Comptes", list.value, false)
-}
-
-pub fn account_not_found_embed(account_id: i64) -> CreateEmbed {
-    warning_embed(
-        "Recherche de compte rAthenaFR",
-        format!("Aucun compte ne correspond à l’ID `{}`.", account_id),
-    )
-}
-
-pub fn account_creation_disabled_embed() -> CreateEmbed {
-    warning_embed(
-        "Création de compte désactivée",
-        "La commande `/createaccount` existe, mais la création publique est désactivée sur ce bot.",
-    )
-}
-
-pub fn account_created_embed(account: &CreatedAccount) -> CreateEmbed {
-    success_embed(
-        "Compte rAthena créé",
-        format!("Le compte `{}` a été créé.", account.userid),
-    )
-    .field("ID compte", format!("`{}`", account.account_id), true)
-    .field("Sexe", format!("`{}`", account.sex), true)
-    .field("Email", format!("`{}`", account.email), true)
-    .field(
-        "Important",
-        "Le mot de passe n’est jamais réaffiché par le bot.",
-        false,
-    )
-}
-
-pub fn account_delete_result_embed(result: &AccountDeleteResult) -> CreateEmbed {
-    match result {
-        AccountDeleteResult::Deleted {
-            account_id,
-            userid,
-            characters,
-            deleted_rows,
-        } => success_embed(
-            "Compte rAthena supprimé",
-            format!(
-                "Le compte `{}` (`{}`) a été supprimé avec `{}` personnage(s) et `{}` ligne(s) supprimées.",
-                userid, account_id, characters, deleted_rows
-            ),
-        ),
-        AccountDeleteResult::HasGuildOwnership {
-            account_id,
-            userid,
-            guilds,
-        } => warning_embed(
-            "Suppression refusée",
-            format!(
-                "Le compte `{}` (`{}`) possède `{}` guilde(s). Transfère ou dissous ces guildes avant de supprimer le compte complet.",
-                userid, account_id, guilds
-            ),
-        ),
-        AccountDeleteResult::NotFound { account_id } => account_not_found_embed(*account_id),
-    }
-}
-
-pub fn account_update_result_embed(result: &AccountUpdateResult) -> CreateEmbed {
-    match result {
-        AccountUpdateResult::Updated {
-            account_id,
-            userid,
-            changed_fields,
-        } => {
-            let fields = if changed_fields.is_empty() {
-                "Aucun champ modifié.".to_string()
-            } else {
-                changed_fields
-                    .iter()
-                    .map(|field| format!("• {field}"))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            };
-
-            success_embed(
-                "Compte rAthena mis à jour",
-                format!("Le compte `{userid}` (`{account_id}`) a été mis à jour."),
-            )
-            .field("Champs modifiés", fields, false)
-            .field(
-                "Sécurité",
-                "Le mot de passe et les valeurs sensibles ne sont pas réaffichés.",
-                false,
-            )
-        }
-        AccountUpdateResult::UsernameAlreadyExists {
-            account_id,
-            userid,
-        } => warning_embed(
-            "Mise à jour refusée",
-            format!(
-                "Le login `{userid}` existe déjà sur un autre compte. Le compte `{account_id}` n’a pas été modifié."
-            ),
-        ),
-        AccountUpdateResult::NotFound { account_id } => account_not_found_embed(*account_id),
-    }
 }
 
 pub fn character_quests_embed(
@@ -1324,41 +642,6 @@ pub fn character_inventory_embed(
     .field("Objets", list.value, false)
 }
 
-pub fn item_count_embed(summary: &ItemCountSummary) -> CreateEmbed {
-    info_embed(
-        "Comptage d’objet rAthenaFR",
-        format!(
-            "Comptage global staff uniquement pour l’objet ID `{}`.",
-            summary.item_id
-        ),
-    )
-    .field(
-        "Inventaire",
-        format!("`{}`", format_number(summary.inventory_amount)),
-        true,
-    )
-    .field(
-        "Chariot",
-        format!("`{}`", format_number(summary.cart_amount)),
-        true,
-    )
-    .field(
-        "Stockage",
-        format!("`{}`", format_number(summary.storage_amount)),
-        true,
-    )
-    .field(
-        "Stockage de guilde",
-        format!("`{}`", format_number(summary.guild_storage_amount)),
-        true,
-    )
-    .field(
-        "Total",
-        format!("`{}`", format_number(summary.total_amount)),
-        true,
-    )
-}
-
 pub fn item_owners_embed(
     item_id: i64,
     owners: &[ItemOwnerEntry],
@@ -1399,66 +682,6 @@ pub fn item_owners_embed(
         false,
     )
     .field("Propriétaires", list.value, false)
-}
-
-pub fn account_overview_embed(
-    status: &AccountStatus,
-    characters: &[AccountCharacterSummary],
-    requested_limit: u32,
-) -> CreateEmbed {
-    let character_list = limited_list(characters, requested_limit, |_index, character| {
-        let status_icon = if character.online { "🟢" } else { "⚫" };
-        format!(
-            "Slot `{}` — {} **{}** — Niv. `{}` / Job `{}` — {} — `{}` zeny",
-            character.slot,
-            status_icon,
-            character.name,
-            character.base_level,
-            character.job_level,
-            job_name(character.class_id),
-            format_number(character.zeny),
-        )
-    });
-    let character_lines = if characters.is_empty() {
-        "Aucun personnage trouvé.".to_string()
-    } else {
-        character_list.value.clone()
-    };
-
-    success_embed(
-        "Résumé de compte rAthenaFR",
-        format!(
-            "Résumé compact staff uniquement pour le compte `{}`.",
-            status.account_id
-        ),
-    )
-    .field("Login", format!("`{}`", status.userid), true)
-    .field("ID groupe", format!("`{}`", status.group_id), true)
-    .field("État", account_state(status.state), true)
-    .field(
-        "Personnages",
-        format!(
-            "`{}` / slots `{}`",
-            status.characters, status.character_slots
-        ),
-        true,
-    )
-    .field("Connecté", format!("`{}`", status.online_characters), true)
-    .field(
-        "Zeny total",
-        format!("`{}`", format_number(status.total_zeny)),
-        true,
-    )
-    .field(
-        "Résumé de la liste des personnages",
-        list_summary(&character_list, "personnages du compte"),
-        false,
-    )
-    .field(
-        "Liste des personnages",
-        trim_embed_value(character_lines),
-        false,
-    )
 }
 
 pub fn ban_list_embed(entries: &[BanEntry], requested_limit: u32) -> CreateEmbed {
@@ -1599,77 +822,6 @@ pub fn market_embed(overview: &MarketOverview) -> CreateEmbed {
     )
 }
 
-pub fn venders_embed(stores: &[VendingStoreEntry], requested_limit: u32) -> CreateEmbed {
-    if stores.is_empty() {
-        return warning_embed(
-            "Boutiques de vente actives",
-            "Aucune boutique de vente active trouvée.",
-        );
-    }
-
-    let list = limited_list(stores, requested_limit, |_index, store| {
-        let min_price = store
-            .min_price
-            .map(format_number)
-            .unwrap_or_else(|| "Aucun".to_string());
-        format!(
-            "`{:>2}.` **{}** — `{}` — Objets `{}` / Quantité `{}` — Min `{}`z — `{}` ({}, {})",
-            store.rank,
-            store.merchant_name,
-            store.shop_title,
-            store.item_count,
-            format_number(store.total_amount),
-            min_price,
-            store.map,
-            store.x,
-            store.y,
-        )
-    });
-
-    info_embed(
-        "Boutiques de vente actives",
-        "Boutiques de vente actuelles depuis la base de données.",
-    )
-    .field("Résumé", list_summary(&list, "boutiques de vente"), false)
-    .field("Boutiques", list.value, false)
-}
-
-pub fn buyers_embed(stores: &[BuyingStoreEntry], requested_limit: u32) -> CreateEmbed {
-    if stores.is_empty() {
-        return warning_embed(
-            "Boutiques d’achat actives",
-            "Aucune boutique d’achat active trouvée.",
-        );
-    }
-
-    let list = limited_list(stores, requested_limit, |_index, store| {
-        let max_price = store
-            .max_price
-            .map(format_number)
-            .unwrap_or_else(|| "Aucun".to_string());
-        format!(
-            "`{:>2}.` **{}** — `{}` — Objets `{}` / Quantité `{}` — Max `{}`z — Limite `{}`z — `{}` ({}, {})",
-            store.rank,
-            store.buyer_name,
-            store.shop_title,
-            store.item_count,
-            format_number(store.total_amount),
-            max_price,
-            format_number(store.zeny_limit),
-            store.map,
-            store.x,
-            store.y,
-        )
-    });
-
-    info_embed(
-        "Boutiques d’achat actives",
-        "Boutiques d’achat actuelles depuis la base de données.",
-    )
-    .field("Résumé", list_summary(&list, "boutiques d’achat"), false)
-    .field("Boutiques", list.value, false)
-}
-
 pub fn staff_only_embed() -> CreateEmbed {
     error_embed(
         "Vous n’avez pas la permission d’exécuter cette commande. Vérifiez les rôles Discord configurés avec `RATHENAFR_*_ROLE_IDS`.",
@@ -1760,23 +912,6 @@ fn footer_text() -> String {
 
 fn brand_text(value: impl Into<String>) -> String {
     value.into().replace("rAthenaFR", COMMAND_DISPLAY_NAME)
-}
-
-fn party_exp_mode(value: i32) -> String {
-    match value {
-        0 => "Individuel".to_string(),
-        1 => "Partage équitable".to_string(),
-        other => format!("Inconnu (`{}`)", other),
-    }
-}
-
-fn party_item_mode(value: i32) -> String {
-    match value {
-        0 => "Individuel".to_string(),
-        1 => "Ramassage partagé".to_string(),
-        2 => "Ramassage partagé + partage équitable".to_string(),
-        other => format!("Inconnu (`{}`)", other),
-    }
 }
 
 fn account_state(value: i64) -> String {
@@ -1990,26 +1125,6 @@ fn trim_line(value: String, limit: usize) -> String {
     trimmed
 }
 
-fn trim_embed_value(value: String) -> String {
-    if value.chars().count() <= EMBED_FIELD_VALUE_LIMIT {
-        return value;
-    }
-
-    let body_limit = EMBED_FIELD_VALUE_LIMIT.saturating_sub(4);
-    let mut trimmed = value.chars().take(body_limit).collect::<String>();
-
-    if let Some(last_line_break) = trimmed.rfind('\n') {
-        trimmed.truncate(last_line_break);
-    }
-
-    if trimmed.is_empty() {
-        trimmed = value.chars().take(body_limit).collect::<String>();
-    }
-
-    trimmed.push_str("\n...");
-    trimmed
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2060,33 +1175,5 @@ mod tests {
         assert_eq!(list.displayed_count, 1);
         assert_eq!(list.available_count, 2);
         assert!(list_summary(&list, "lignes").contains("les limites de champ des embeds Discord"));
-    }
-
-    #[test]
-    fn asset_url_supports_absolute_templates() {
-        let url = asset_url(
-            Some("https://panel.example.com"),
-            "https://cdn.example.com/items/{item_id}.png",
-            &[("item_id", "501".to_string())],
-        );
-
-        assert_eq!(
-            url.as_deref(),
-            Some("https://cdn.example.com/items/501.png")
-        );
-    }
-
-    #[test]
-    fn asset_url_supports_absolute_templates_without_base_url() {
-        let url = asset_url(
-            None,
-            "https://cdn.example.com/jobs/{class_id}.png",
-            &[("class_id", "4001".to_string())],
-        );
-
-        assert_eq!(
-            url.as_deref(),
-            Some("https://cdn.example.com/jobs/4001.png")
-        );
     }
 }

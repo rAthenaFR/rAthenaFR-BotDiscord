@@ -1,4 +1,3 @@
-mod options;
 mod public;
 mod staff;
 
@@ -6,6 +5,7 @@ use crate::config::AppConfig;
 use anyhow::Result;
 use serenity::all::{ApplicationId, CreateCommand, GuildId, Http};
 
+#[cfg(test)]
 pub fn command_definitions() -> Vec<CreateCommand> {
     let mut commands = public::command_definitions();
     commands.extend(staff::command_definitions());

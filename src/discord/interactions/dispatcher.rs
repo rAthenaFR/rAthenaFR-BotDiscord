@@ -1,11 +1,10 @@
 use crate::cache::{BotCache, StatusCacheEntry, TimedCache};
-use crate::config::{AppConfig, AssetConfig, GameBridgeMode, StaffRole, TopZenyMode};
+use crate::config::{AppConfig, GameBridgeMode, StaffRole, TopZenyMode};
 use crate::discord::embeds;
 use crate::infra::observability::CommandTimer;
 use crate::rathenafr::{
-    check_services, BroadcastMode, BuyingStoreEntry, ClassDistributionEntry, DatabaseTable,
-    GameBridge, MapStatsEntry, MarketBuyEntry, MarketOverview, MarketSellEntry, RAthenaFrDatabase,
-    SearchResults, VendingStoreEntry,
+    check_services, BroadcastMode, DatabaseTable, GameBridge, MarketBuyEntry, MarketOverview,
+    MarketSellEntry, RAthenaFrDatabase,
 };
 use anyhow::Result;
 use serenity::all::{
@@ -21,24 +20,17 @@ use tracing::{debug, error, info};
 
 const STATUS_CACHE_TTL_SECONDS: u64 = 10;
 const GUILDS_CACHE_TTL_SECONDS: u64 = 30;
-const CLASSES_CACHE_TTL_SECONDS: u64 = 60;
-const MAP_STATS_CACHE_TTL_SECONDS: u64 = 60;
 const CASTLES_CACHE_TTL_SECONDS: u64 = 60;
 const MARKET_CACHE_TTL_SECONDS: u64 = 20;
 
 #[cfg(test)]
-const CACHED_COMMAND_NAMES: &[&str] = &[
-    "status", "guilds", "classes", "mapstats", "castles", "whosell", "whobuy", "market", "venders",
-    "buyers",
-];
+const CACHED_COMMAND_NAMES: &[&str] =
+    &["status", "guilds", "castles", "whosell", "whobuy", "market"];
 
 const BUYING_STORE_TABLES: &[DatabaseTable] =
     &[DatabaseTable::BuyingStores, DatabaseTable::BuyingStoreItems];
 const CASTLE_TABLES: &[DatabaseTable] = &[DatabaseTable::GuildCastle];
-const GUILD_ALLIANCE_TABLES: &[DatabaseTable] = &[DatabaseTable::GuildAlliance];
 const GUILD_MEMBER_TABLES: &[DatabaseTable] = &[DatabaseTable::GuildMember];
-const GUILD_SKILL_TABLES: &[DatabaseTable] = &[DatabaseTable::GuildSkill];
-const HOMUNCULUS_TABLES: &[DatabaseTable] = &[DatabaseTable::Homunculus];
 const INVENTORY_TABLES: &[DatabaseTable] = &[DatabaseTable::Inventory];
 const ITEM_STORAGE_TABLES: &[DatabaseTable] = &[
     DatabaseTable::Inventory,
@@ -53,16 +45,12 @@ const MARKET_TABLES: &[DatabaseTable] = &[
     DatabaseTable::BuyingStores,
     DatabaseTable::BuyingStoreItems,
 ];
-const PARTY_TABLES: &[DatabaseTable] = &[DatabaseTable::Party];
-const PET_TABLES: &[DatabaseTable] = &[DatabaseTable::Pet];
 const QUEST_TABLES: &[DatabaseTable] = &[DatabaseTable::Quest];
 const SELL_TABLES: &[DatabaseTable] = &[
     DatabaseTable::Vendings,
     DatabaseTable::VendingItems,
     DatabaseTable::CartInventory,
 ];
-const VENDING_STORE_TABLES: &[DatabaseTable] =
-    &[DatabaseTable::Vendings, DatabaseTable::VendingItems];
 
 pub struct BotState {
     pub config: Arc<AppConfig>,
@@ -1459,74 +1447,6 @@ impl Handler {
         .await
     }
 
-    async fn handle_search(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
-        let Some(query) = string_option(command, "query") else {
-            return self
-                .respond_error(context, command, "Option obligatoire manquante : query.")
-                .await;
-        };
-        let query = query.trim();
-        if query.is_empty() {
-            return self
-                .respond_error(context, command, "La recherche ne peut pas être vide.")
-                .await;
-        }
-        let category = match SearchCategory::from_option(string_option(command, "category")) {
-            Ok(category) => category,
-            Err(message) => return self.respond_error(context, command, message).await,
-        };
-
-        let (display_limit, query_limit) = self.list_limits(command);
-        let group_threshold = self.state.config.display.public_character_group_threshold();
-        let results = match category {
-            SearchCategory::All => {
-                self.state
-                    .database
-                    .search_all(group_threshold, query, query_limit)
-                    .await?
-            }
-            SearchCategory::Players => SearchResults {
-                characters: self
-                    .state
-                    .database
-                    .search_characters(group_threshold, query, query_limit)
-                    .await?,
-                items: Vec::new(),
-                monsters: Vec::new(),
-            },
-            SearchCategory::Items => SearchResults {
-                characters: Vec::new(),
-                items: self.state.database.search_items(query, query_limit).await?,
-                monsters: Vec::new(),
-            },
-            SearchCategory::Monsters => SearchResults {
-                characters: Vec::new(),
-                items: Vec::new(),
-                monsters: self
-                    .state
-                    .database
-                    .search_monsters(query, query_limit)
-                    .await?,
-            },
-        };
-
-        warm_search_asset_cache(&self.state.config.assets, &results).await;
-
-        self.respond_embeds(
-            context,
-            command,
-            embeds::search_embeds(
-                query,
-                category.label(),
-                &results,
-                display_limit,
-                &self.state.config.assets,
-            ),
-            false,
-        )
-        .await
-    }
-
     async fn handle_createaccount(
         &self,
         context: &Context,
@@ -1697,222 +1617,6 @@ impl Handler {
         .await
     }
 
-    async fn handle_classes(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
-        let (display_limit, query_limit) = self.list_limits(command);
-        let group_threshold = self.state.config.display.public_character_group_threshold();
-        let entries = self.cached_classes(group_threshold, query_limit).await?;
-
-        self.respond_embed(
-            context,
-            command,
-            embeds::classes_embed(&entries, display_limit),
-            false,
-        )
-        .await
-    }
-
-    async fn handle_mapstats(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
-        let (display_limit, query_limit) = self.list_limits(command);
-        let online_only = bool_option(command, "online_only").unwrap_or(false);
-        let group_threshold = self.state.config.display.public_character_group_threshold();
-        let entries = self
-            .cached_map_stats(group_threshold, online_only, query_limit)
-            .await?;
-
-        self.respond_embed(
-            context,
-            command,
-            embeds::map_stats_embed(&entries, online_only, display_limit),
-            false,
-        )
-        .await
-    }
-
-    async fn handle_maponline(
-        &self,
-        context: &Context,
-        command: &CommandInteraction,
-    ) -> Result<()> {
-        let Some(map) = string_option(command, "map") else {
-            return self
-                .respond_error(context, command, "Option obligatoire manquante : map.")
-                .await;
-        };
-
-        let (display_limit, query_limit) = self.list_limits(command);
-        let characters = self
-            .state
-            .database
-            .map_online_characters(
-                self.state.config.display.public_character_group_threshold(),
-                map,
-                query_limit,
-            )
-            .await?;
-
-        self.respond_embed(
-            context,
-            command,
-            embeds::map_online_embed(map, &characters, display_limit),
-            false,
-        )
-        .await
-    }
-
-    async fn handle_party(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
-        let Some(name) = string_option(command, "name") else {
-            return self
-                .respond_error(context, command, "Option obligatoire manquante : name.")
-                .await;
-        };
-
-        if !self
-            .ensure_database_tables(context, command, PARTY_TABLES)
-            .await?
-        {
-            return Ok(());
-        }
-
-        let party = self
-            .state
-            .database
-            .find_party(
-                name,
-                self.state.config.display.public_character_group_threshold(),
-            )
-            .await?;
-
-        let embed = match party {
-            Some(party) => embeds::party_embed(&party),
-            None => embeds::party_not_found_embed(name),
-        };
-
-        self.respond_embed(context, command, embed, false).await
-    }
-
-    async fn handle_partymembers(
-        &self,
-        context: &Context,
-        command: &CommandInteraction,
-    ) -> Result<()> {
-        let Some(name) = string_option(command, "name") else {
-            return self
-                .respond_error(context, command, "Option obligatoire manquante : name.")
-                .await;
-        };
-
-        if !self
-            .ensure_database_tables(context, command, PARTY_TABLES)
-            .await?
-        {
-            return Ok(());
-        }
-
-        let (display_limit, query_limit) = self.list_limits(command);
-        let members = self
-            .state
-            .database
-            .party_members(
-                name,
-                self.state.config.display.public_character_group_threshold(),
-                query_limit,
-            )
-            .await?;
-
-        self.respond_embed(
-            context,
-            command,
-            embeds::party_members_embed(name, &members, display_limit),
-            false,
-        )
-        .await
-    }
-
-    async fn handle_homunculus(
-        &self,
-        context: &Context,
-        command: &CommandInteraction,
-    ) -> Result<()> {
-        let Some(character) = string_option(command, "character") else {
-            return self
-                .respond_error(
-                    context,
-                    command,
-                    "Option obligatoire manquante : character.",
-                )
-                .await;
-        };
-
-        if !self
-            .ensure_database_tables(context, command, HOMUNCULUS_TABLES)
-            .await?
-        {
-            return Ok(());
-        }
-
-        let homunculus = self
-            .state
-            .database
-            .find_homunculus(
-                character,
-                self.state.config.display.public_character_group_threshold(),
-            )
-            .await?;
-
-        let embed = match homunculus {
-            Some(homunculus) => embeds::homunculus_embed(&homunculus),
-            None => embeds::homunculus_not_found_embed(character),
-        };
-
-        self.respond_embed(context, command, embed, false).await
-    }
-
-    async fn handle_pet(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
-        let Some(character) = string_option(command, "character") else {
-            return self
-                .respond_error(
-                    context,
-                    command,
-                    "Option obligatoire manquante : character.",
-                )
-                .await;
-        };
-
-        if !self
-            .ensure_database_tables(context, command, PET_TABLES)
-            .await?
-        {
-            return Ok(());
-        }
-
-        let pet = self
-            .state
-            .database
-            .find_pet(
-                character,
-                self.state.config.display.public_character_group_threshold(),
-            )
-            .await?;
-
-        let embed = match pet {
-            Some(pet) => embeds::pet_embed(&pet),
-            None => embeds::pet_not_found_embed(character),
-        };
-
-        self.respond_embed(context, command, embed, false).await
-    }
-
-    async fn handle_zeny(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
-        let summary = self
-            .state
-            .database
-            .zeny_summary(self.state.config.display.ranking_group_threshold())
-            .await?;
-
-        self.respond_embed(context, command, embeds::zeny_embed(&summary), false)
-            .await
-    }
-
     async fn handle_castles(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
         if !self
             .ensure_database_tables(context, command, CASTLE_TABLES)
@@ -1965,282 +1669,6 @@ impl Handler {
         };
 
         self.respond_embed(context, command, embed, false).await
-    }
-
-    async fn handle_guildalliances(
-        &self,
-        context: &Context,
-        command: &CommandInteraction,
-    ) -> Result<()> {
-        let Some(name) = string_option(command, "name") else {
-            return self
-                .respond_error(context, command, "Option obligatoire manquante : name.")
-                .await;
-        };
-
-        if !self
-            .ensure_database_tables(context, command, GUILD_ALLIANCE_TABLES)
-            .await?
-        {
-            return Ok(());
-        }
-
-        let (display_limit, query_limit) = self.list_limits(command);
-        let alliances = self
-            .state
-            .database
-            .guild_alliances(name, query_limit)
-            .await?;
-
-        self.respond_embed(
-            context,
-            command,
-            embeds::guild_alliances_embed(name, &alliances, display_limit),
-            false,
-        )
-        .await
-    }
-
-    async fn handle_guildskills(
-        &self,
-        context: &Context,
-        command: &CommandInteraction,
-    ) -> Result<()> {
-        let Some(name) = string_option(command, "name") else {
-            return self
-                .respond_error(context, command, "Option obligatoire manquante : name.")
-                .await;
-        };
-
-        if !self
-            .ensure_database_tables(context, command, GUILD_SKILL_TABLES)
-            .await?
-        {
-            return Ok(());
-        }
-
-        let (display_limit, query_limit) = self.list_limits(command);
-        let skills = self.state.database.guild_skills(name, query_limit).await?;
-
-        self.respond_embed(
-            context,
-            command,
-            embeds::guild_skills_embed(name, &skills, display_limit),
-            false,
-        )
-        .await
-    }
-
-    async fn handle_homunculustop(
-        &self,
-        context: &Context,
-        command: &CommandInteraction,
-    ) -> Result<()> {
-        if !self
-            .ensure_database_tables(context, command, HOMUNCULUS_TABLES)
-            .await?
-        {
-            return Ok(());
-        }
-
-        let (display_limit, query_limit) = self.list_limits(command);
-        let entries = self
-            .state
-            .database
-            .top_homunculus(
-                self.state.config.display.public_character_group_threshold(),
-                query_limit,
-            )
-            .await?;
-
-        self.respond_embed(
-            context,
-            command,
-            embeds::homunculus_top_embed(&entries, display_limit),
-            false,
-        )
-        .await
-    }
-
-    async fn handle_pettop(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
-        if !self
-            .ensure_database_tables(context, command, PET_TABLES)
-            .await?
-        {
-            return Ok(());
-        }
-
-        let (display_limit, query_limit) = self.list_limits(command);
-        let entries = self
-            .state
-            .database
-            .top_pets(
-                self.state.config.display.public_character_group_threshold(),
-                query_limit,
-            )
-            .await?;
-
-        self.respond_embed(
-            context,
-            command,
-            embeds::pet_top_embed(&entries, display_limit),
-            false,
-        )
-        .await
-    }
-
-    async fn handle_queststats(
-        &self,
-        context: &Context,
-        command: &CommandInteraction,
-    ) -> Result<()> {
-        let Some(quest_id) = positive_integer_option(command, "quest_id") else {
-            return self
-                .respond_error(context, command, "Option obligatoire manquante : quest_id.")
-                .await;
-        };
-
-        if !self
-            .ensure_database_tables(context, command, QUEST_TABLES)
-            .await?
-        {
-            return Ok(());
-        }
-
-        let stats = self
-            .state
-            .database
-            .quest_stats(
-                quest_id,
-                self.state.config.display.public_character_group_threshold(),
-            )
-            .await?;
-
-        self.respond_embed(context, command, embeds::quest_stats_embed(&stats), false)
-            .await
-    }
-
-    async fn handle_whosell(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
-        let Some(item_id) = positive_integer_option(command, "item_id") else {
-            return self
-                .respond_error(context, command, "Option obligatoire manquante : item_id.")
-                .await;
-        };
-
-        if !self
-            .ensure_database_tables(context, command, SELL_TABLES)
-            .await?
-        {
-            return Ok(());
-        }
-
-        let (display_limit, query_limit) = self.list_limits(command);
-        let group_threshold = self.state.config.display.public_character_group_threshold();
-        let sellers = self
-            .cached_who_sell(item_id, group_threshold, query_limit)
-            .await?;
-
-        self.respond_embed(
-            context,
-            command,
-            embeds::who_sell_embed(item_id, &sellers, display_limit),
-            false,
-        )
-        .await
-    }
-
-    async fn handle_whobuy(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
-        let Some(item_id) = positive_integer_option(command, "item_id") else {
-            return self
-                .respond_error(context, command, "Option obligatoire manquante : item_id.")
-                .await;
-        };
-
-        if !self
-            .ensure_database_tables(context, command, BUYING_STORE_TABLES)
-            .await?
-        {
-            return Ok(());
-        }
-
-        let (display_limit, query_limit) = self.list_limits(command);
-        let group_threshold = self.state.config.display.public_character_group_threshold();
-        let buyers = self
-            .cached_who_buy(item_id, group_threshold, query_limit)
-            .await?;
-
-        self.respond_embed(
-            context,
-            command,
-            embeds::who_buy_embed(item_id, &buyers, display_limit),
-            false,
-        )
-        .await
-    }
-
-    async fn handle_market(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
-        let Some(item_id) = positive_integer_option(command, "item_id") else {
-            return self
-                .respond_error(context, command, "Option obligatoire manquante : item_id.")
-                .await;
-        };
-
-        if !self
-            .ensure_database_tables(context, command, MARKET_TABLES)
-            .await?
-        {
-            return Ok(());
-        }
-
-        let group_threshold = self.state.config.display.public_character_group_threshold();
-        let overview = self
-            .cached_market_overview(item_id, group_threshold)
-            .await?;
-
-        self.respond_embed(context, command, embeds::market_embed(&overview), false)
-            .await
-    }
-
-    async fn handle_venders(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
-        if !self
-            .ensure_database_tables(context, command, VENDING_STORE_TABLES)
-            .await?
-        {
-            return Ok(());
-        }
-
-        let (display_limit, query_limit) = self.list_limits(command);
-        let group_threshold = self.state.config.display.public_character_group_threshold();
-        let stores = self.cached_venders(group_threshold, query_limit).await?;
-
-        self.respond_embed(
-            context,
-            command,
-            embeds::venders_embed(&stores, display_limit),
-            false,
-        )
-        .await
-    }
-
-    async fn handle_buyers(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
-        if !self
-            .ensure_database_tables(context, command, BUYING_STORE_TABLES)
-            .await?
-        {
-            return Ok(());
-        }
-
-        let (display_limit, query_limit) = self.list_limits(command);
-        let group_threshold = self.state.config.display.public_character_group_threshold();
-        let stores = self.cached_buyers(group_threshold, query_limit).await?;
-
-        self.respond_embed(
-            context,
-            command,
-            embeds::buyers_embed(&stores, display_limit),
-            false,
-        )
-        .await
     }
 
     async fn handle_charquests(
@@ -2375,138 +1803,6 @@ impl Handler {
         .await
     }
 
-    async fn handle_itemcount(
-        &self,
-        context: &Context,
-        command: &CommandInteraction,
-    ) -> Result<()> {
-        if !self.has_staff_access(command) {
-            return self
-                .respond_embed(context, command, embeds::staff_only_embed(), true)
-                .await;
-        }
-
-        let Some(item_id) = positive_integer_option(command, "item_id") else {
-            return self
-                .respond_error(context, command, "Option obligatoire manquante : item_id.")
-                .await;
-        };
-
-        if !self
-            .ensure_database_tables(context, command, ITEM_STORAGE_TABLES)
-            .await?
-        {
-            return Ok(());
-        }
-
-        let summary = self.state.database.item_count(item_id).await?;
-
-        self.respond_embed(context, command, embeds::item_count_embed(&summary), true)
-            .await
-    }
-
-    async fn handle_itemowners(
-        &self,
-        context: &Context,
-        command: &CommandInteraction,
-    ) -> Result<()> {
-        if !self.has_staff_access(command) {
-            return self
-                .respond_embed(context, command, embeds::staff_only_embed(), true)
-                .await;
-        }
-
-        let Some(item_id) = positive_integer_option(command, "item_id") else {
-            return self
-                .respond_error(context, command, "Option obligatoire manquante : item_id.")
-                .await;
-        };
-
-        if !self
-            .ensure_database_tables(context, command, ITEM_STORAGE_TABLES)
-            .await?
-        {
-            return Ok(());
-        }
-
-        let (display_limit, query_limit) = self.list_limits(command);
-        let owners = self
-            .state
-            .database
-            .item_owners(item_id, query_limit)
-            .await?;
-
-        self.respond_embed(
-            context,
-            command,
-            embeds::item_owners_embed(item_id, &owners, display_limit),
-            true,
-        )
-        .await
-    }
-
-    async fn handle_accountlist(
-        &self,
-        context: &Context,
-        command: &CommandInteraction,
-    ) -> Result<()> {
-        if !self.has_staff_access(command) {
-            return self
-                .respond_embed(context, command, embeds::staff_only_embed(), true)
-                .await;
-        }
-
-        let (display_limit, query_limit) = self.list_limits(command);
-        let page = positive_integer_option(command, "page").unwrap_or(1);
-        let page = u32::try_from(page).unwrap_or(u32::MAX);
-        let accounts = self.state.database.account_list(query_limit, page).await?;
-
-        self.respond_embed(
-            context,
-            command,
-            embeds::account_list_embed(&accounts, display_limit),
-            true,
-        )
-        .await
-    }
-
-    async fn handle_accountoverview(
-        &self,
-        context: &Context,
-        command: &CommandInteraction,
-    ) -> Result<()> {
-        if !self.has_staff_access(command) {
-            return self
-                .respond_embed(context, command, embeds::staff_only_embed(), true)
-                .await;
-        }
-
-        let Some(account_id) = positive_integer_option(command, "account_id") else {
-            return self
-                .respond_error(
-                    context,
-                    command,
-                    "Option obligatoire manquante : account_id.",
-                )
-                .await;
-        };
-
-        let (display_limit, query_limit) = self.list_limits(command);
-        let account = self.state.database.account_status(account_id).await?;
-        let characters = self
-            .state
-            .database
-            .account_characters(account_id, query_limit)
-            .await?;
-
-        let embed = match account {
-            Some(account) => embeds::account_overview_embed(&account, &characters, display_limit),
-            None => embeds::account_not_found_embed(account_id),
-        };
-
-        self.respond_embed(context, command, embed, true).await
-    }
-
     async fn handle_banlist(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
         if !self.has_staff_access(command) {
             return self
@@ -2526,73 +1822,6 @@ impl Handler {
         .await
     }
 
-    async fn handle_accountchars(
-        &self,
-        context: &Context,
-        command: &CommandInteraction,
-    ) -> Result<()> {
-        if !self.has_staff_access(command) {
-            return self
-                .respond_embed(context, command, embeds::staff_only_embed(), true)
-                .await;
-        }
-
-        let Some(account_id) = positive_integer_option(command, "account_id") else {
-            return self
-                .respond_error(
-                    context,
-                    command,
-                    "Option obligatoire manquante : account_id.",
-                )
-                .await;
-        };
-
-        let (display_limit, query_limit) = self.list_limits(command);
-        let characters = self
-            .state
-            .database
-            .account_characters(account_id, query_limit)
-            .await?;
-
-        self.respond_embed(
-            context,
-            command,
-            embeds::account_characters_embed(account_id, &characters, display_limit),
-            true,
-        )
-        .await
-    }
-
-    async fn handle_accountstatus(
-        &self,
-        context: &Context,
-        command: &CommandInteraction,
-    ) -> Result<()> {
-        if !self.has_staff_access(command) {
-            return self
-                .respond_embed(context, command, embeds::staff_only_embed(), true)
-                .await;
-        }
-
-        let Some(account_id) = positive_integer_option(command, "account_id") else {
-            return self
-                .respond_error(
-                    context,
-                    command,
-                    "Option obligatoire manquante : account_id.",
-                )
-                .await;
-        };
-
-        let account = self.state.database.account_status(account_id).await?;
-        let embed = match account {
-            Some(account) => embeds::account_status_embed(&account),
-            None => embeds::account_not_found_embed(account_id),
-        };
-
-        self.respond_embed(context, command, embed, true).await
-    }
-
     fn has_staff_access(&self, command: &CommandInteraction) -> bool {
         self.has_staff_role(command, StaffRole::Helper)
     }
@@ -2608,16 +1837,16 @@ impl Handler {
             .map(|role| role.get())
             .collect::<Vec<_>>();
 
-        has_configured_role(
-            &member_role_ids,
-            minimum_role,
-            &config.helper_role_ids,
-            &config.moderator_role_ids,
-            &config.gm_role_ids,
-            &config.staff_role_ids,
-            &config.admin_role_ids,
-            &config.owner_role_ids,
-        )
+        let configured_roles = ConfiguredRoles {
+            helper: &config.helper_role_ids,
+            moderator: &config.moderator_role_ids,
+            gm: &config.gm_role_ids,
+            legacy_staff: &config.staff_role_ids,
+            admin: &config.admin_role_ids,
+            owner: &config.owner_role_ids,
+        };
+
+        has_configured_role(&member_role_ids, minimum_role, configured_roles)
     }
 
     async fn respond_embed(
@@ -2633,27 +1862,6 @@ impl Handler {
                 CreateInteractionResponse::Message(
                     CreateInteractionResponseMessage::new()
                         .embed(embed)
-                        .ephemeral(ephemeral),
-                ),
-            )
-            .await?;
-
-        Ok(())
-    }
-
-    async fn respond_embeds(
-        &self,
-        context: &Context,
-        command: &CommandInteraction,
-        embeds: Vec<serenity::all::CreateEmbed>,
-        ephemeral: bool,
-    ) -> Result<()> {
-        command
-            .create_response(
-                &context.http,
-                CreateInteractionResponse::Message(
-                    CreateInteractionResponseMessage::new()
-                        .embeds(embeds)
                         .ephemeral(ephemeral),
                 ),
             )
@@ -2779,52 +1987,6 @@ impl Handler {
         Ok(false)
     }
 
-    async fn cached_classes(
-        &self,
-        group_threshold: i32,
-        query_limit: u32,
-    ) -> Result<Vec<ClassDistributionEntry>> {
-        cached_data(
-            "classes",
-            format!("group_threshold={group_threshold};limit={query_limit}"),
-            self.state.config.cache.duration(CLASSES_CACHE_TTL_SECONDS),
-            &self.state.cache.classes,
-            async {
-                self.state
-                    .database
-                    .class_distribution(group_threshold, query_limit)
-                    .await
-            },
-        )
-        .await
-    }
-
-    async fn cached_map_stats(
-        &self,
-        group_threshold: i32,
-        online_only: bool,
-        query_limit: u32,
-    ) -> Result<Vec<MapStatsEntry>> {
-        cached_data(
-            "mapstats",
-            format!(
-                "group_threshold={group_threshold};online_only={online_only};limit={query_limit}"
-            ),
-            self.state
-                .config
-                .cache
-                .duration(MAP_STATS_CACHE_TTL_SECONDS),
-            &self.state.cache.map_stats,
-            async {
-                self.state
-                    .database
-                    .map_stats(group_threshold, online_only, query_limit)
-                    .await
-            },
-        )
-        .await
-    }
-
     async fn cached_who_sell(
         &self,
         item_id: i64,
@@ -2887,46 +2049,6 @@ impl Handler {
         .await
     }
 
-    async fn cached_venders(
-        &self,
-        group_threshold: i32,
-        query_limit: u32,
-    ) -> Result<Vec<VendingStoreEntry>> {
-        cached_data(
-            "venders",
-            format!("group_threshold={group_threshold};limit={query_limit}"),
-            self.state.config.cache.duration(MARKET_CACHE_TTL_SECONDS),
-            &self.state.cache.venders,
-            async {
-                self.state
-                    .database
-                    .vending_stores(group_threshold, query_limit)
-                    .await
-            },
-        )
-        .await
-    }
-
-    async fn cached_buyers(
-        &self,
-        group_threshold: i32,
-        query_limit: u32,
-    ) -> Result<Vec<BuyingStoreEntry>> {
-        cached_data(
-            "buyers",
-            format!("group_threshold={group_threshold};limit={query_limit}"),
-            self.state.config.cache.duration(MARKET_CACHE_TTL_SECONDS),
-            &self.state.cache.buyers,
-            async {
-                self.state
-                    .database
-                    .buying_stores(group_threshold, query_limit)
-                    .await
-            },
-        )
-        .await
-    }
-
     fn list_limits(&self, command: &CommandInteraction) -> (u32, u32) {
         let display_limit = self.requested_limit(command);
         let query_limit = display_limit.saturating_add(1);
@@ -2939,35 +2061,6 @@ impl Handler {
             .config
             .display
             .clamp_limit(integer_option(command, "limit"))
-    }
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-enum SearchCategory {
-    All,
-    Players,
-    Items,
-    Monsters,
-}
-
-impl SearchCategory {
-    fn from_option(value: Option<&str>) -> std::result::Result<Self, &'static str> {
-        match value.unwrap_or("all") {
-            "all" => Ok(Self::All),
-            "players" => Ok(Self::Players),
-            "items" => Ok(Self::Items),
-            "monsters" => Ok(Self::Monsters),
-            _ => Err("Catégorie supportée : all, players, items ou monsters."),
-        }
-    }
-
-    const fn label(self) -> &'static str {
-        match self {
-            Self::All => "toutes les catégories",
-            Self::Players => "joueurs",
-            Self::Items => "items",
-            Self::Monsters => "monstres",
-        }
     }
 }
 
@@ -3046,17 +2139,6 @@ fn string_option<'a>(command: &'a CommandInteraction, name: &str) -> Option<&'a 
     })
 }
 
-fn bool_option(command: &CommandInteraction, name: &str) -> Option<bool> {
-    option_value(&command.data.options, name).and_then(|value| match value {
-        CommandDataOptionValue::Boolean(value) => Some(*value),
-        _ => None,
-    })
-}
-
-fn positive_integer_option(command: &CommandInteraction, name: &str) -> Option<i64> {
-    integer_option(command, name).filter(|value| *value > 0)
-}
-
 fn non_negative_integer_option(command: &CommandInteraction, name: &str) -> Option<i64> {
     integer_option(command, name).filter(|value| *value >= 0)
 }
@@ -3068,84 +2150,36 @@ fn integer_option(command: &CommandInteraction, name: &str) -> Option<i64> {
     })
 }
 
-fn optional_non_negative_i32_option(
-    command: &CommandInteraction,
-    name: &str,
-) -> std::result::Result<Option<i32>, String> {
-    let Some(value) = integer_option(command, name) else {
-        return Ok(None);
-    };
-
-    if value < 0 {
-        return Err(format!("`{name}` doit être supérieur ou égal à 0."));
-    }
-
-    if value > i32::MAX as i64 {
-        return Err(format!("`{name}` est trop grand."));
-    }
-
-    Ok(Some(value as i32))
-}
-
-fn optional_non_negative_i64_option(
-    command: &CommandInteraction,
-    name: &str,
-) -> std::result::Result<Option<i64>, String> {
-    let Some(value) = integer_option(command, name) else {
-        return Ok(None);
-    };
-
-    if value < 0 {
-        return Err(format!("`{name}` doit être supérieur ou égal à 0."));
-    }
-
-    Ok(Some(value))
-}
-
-fn has_configured_staff_role(
-    member_role_ids: &[u64],
-    staff_role_ids: &[u64],
-    admin_role_ids: &[u64],
-    owner_role_ids: &[u64],
-) -> bool {
-    has_configured_role(
-        member_role_ids,
-        StaffRole::Helper,
-        staff_role_ids,
-        &[],
-        &[],
-        staff_role_ids,
-        admin_role_ids,
-        owner_role_ids,
-    )
+struct ConfiguredRoles<'a> {
+    helper: &'a [u64],
+    moderator: &'a [u64],
+    gm: &'a [u64],
+    legacy_staff: &'a [u64],
+    admin: &'a [u64],
+    owner: &'a [u64],
 }
 
 fn has_configured_role(
     member_role_ids: &[u64],
     minimum_role: StaffRole,
-    helper_role_ids: &[u64],
-    moderator_role_ids: &[u64],
-    gm_role_ids: &[u64],
-    legacy_staff_role_ids: &[u64],
-    admin_role_ids: &[u64],
-    owner_role_ids: &[u64],
+    configured_roles: ConfiguredRoles<'_>,
 ) -> bool {
     let mut allowed_role_ids = Vec::new();
 
     if minimum_role <= StaffRole::Helper {
-        allowed_role_ids.extend(helper_role_ids.iter().copied());
-        allowed_role_ids.extend(legacy_staff_role_ids.iter().copied());
+        allowed_role_ids.extend(configured_roles.helper.iter().copied());
+        allowed_role_ids.extend(configured_roles.legacy_staff.iter().copied());
     }
     if minimum_role <= StaffRole::Moderator {
-        allowed_role_ids.extend(moderator_role_ids.iter().copied());
+        allowed_role_ids.extend(configured_roles.moderator.iter().copied());
     }
     if minimum_role <= StaffRole::Gm {
-        allowed_role_ids.extend(gm_role_ids.iter().copied());
+        allowed_role_ids.extend(configured_roles.gm.iter().copied());
     }
     if minimum_role <= StaffRole::Admin {
-        allowed_role_ids.extend(admin_role_ids.iter().copied());
+        allowed_role_ids.extend(configured_roles.admin.iter().copied());
     }
-    allowed_role_ids.extend(owner_role_ids.iter().copied());
+    allowed_role_ids.extend(configured_roles.owner.iter().copied());
 
     !allowed_role_ids.is_empty()
         && member_role_ids
@@ -3342,63 +2376,6 @@ where
     Ok(value)
 }
 
-async fn warm_search_asset_cache(assets: &AssetConfig, results: &SearchResults) {
-    let Some(url) = monster_cache_warmup_url(assets, results) else {
-        return;
-    };
-
-    let client = match reqwest::Client::builder()
-        .timeout(Duration::from_secs(2))
-        .build()
-    {
-        Ok(client) => client,
-        Err(error) => {
-            debug!(error = %error, "Impossible de creer le client de prechargement FluxCP.");
-            return;
-        }
-    };
-
-    match client.get(&url).send().await {
-        Ok(response) => {
-            debug!(
-                url = %url,
-                status = response.status().as_u16(),
-                "Préchargement FluxCP du monstre terminé."
-            );
-        }
-        Err(error) => {
-            debug!(
-                url = %url,
-                error = %error,
-                "Préchargement FluxCP du monstre ignoré."
-            );
-        }
-    }
-}
-
-fn monster_cache_warmup_url(assets: &AssetConfig, results: &SearchResults) -> Option<String> {
-    if !results.items.is_empty() {
-        return None;
-    }
-
-    let monster = results.monsters.first()?;
-    let path = assets.monster_image_path.trim();
-
-    if path.starts_with("http://") || path.starts_with("https://") {
-        return None;
-    }
-
-    let base_url = assets.base_url.as_deref()?.trim_end_matches('/');
-    if base_url.is_empty() {
-        return None;
-    }
-
-    Some(format!(
-        "{base_url}/?module=monster&action=view&id={}",
-        monster.monster_id
-    ))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3406,99 +2383,31 @@ mod tests {
 
     #[test]
     fn staff_role_logic_requires_configured_matching_role() {
-        assert!(!has_configured_staff_role(&[10], &[], &[], &[]));
-        assert!(!has_configured_staff_role(&[10], &[20], &[], &[]));
-        assert!(has_configured_staff_role(&[10], &[10], &[], &[]));
-        assert!(has_configured_staff_role(&[30], &[], &[30], &[]));
-        assert!(has_configured_staff_role(&[40], &[], &[], &[40]));
+        assert!(!test_staff_role(&[10], &[], &[], &[]));
+        assert!(!test_staff_role(&[10], &[20], &[], &[]));
+        assert!(test_staff_role(&[10], &[10], &[], &[]));
+        assert!(test_staff_role(&[30], &[], &[30], &[]));
+        assert!(test_staff_role(&[40], &[], &[], &[40]));
     }
 
-    #[test]
-    fn search_category_defaults_and_validates() {
-        assert_eq!(
-            SearchCategory::from_option(None).unwrap(),
-            SearchCategory::All
-        );
-        assert_eq!(
-            SearchCategory::from_option(Some("players")).unwrap(),
-            SearchCategory::Players
-        );
-        assert_eq!(
-            SearchCategory::from_option(Some("items")).unwrap(),
-            SearchCategory::Items
-        );
-        assert_eq!(
-            SearchCategory::from_option(Some("monsters")).unwrap(),
-            SearchCategory::Monsters
-        );
-        assert!(SearchCategory::from_option(Some("guilds")).is_err());
-    }
-
-    #[test]
-    fn monster_cache_warmup_uses_fluxcp_view_for_relative_monster_images() {
-        let assets = AssetConfig {
-            base_url: Some("https://panel.example.com".to_string()),
-            item_icon_path: "https://cdn.example.com/items/{item_id}.png".to_string(),
-            monster_image_path: "data/monsters/{monster_id}.png".to_string(),
-            character_image_path: None,
-        };
-        let results = SearchResults {
-            characters: Vec::new(),
-            items: Vec::new(),
-            monsters: vec![crate::rathenafr::MonsterSearchEntry {
-                monster_id: 1039,
-                sprite: "BAPHOMET".to_string(),
-                display_name: "Baphomet".to_string(),
-                level: 81,
-                hp: 668000,
-                source_table: "mob_db".to_string(),
-            }],
-        };
-
-        assert_eq!(
-            monster_cache_warmup_url(&assets, &results).as_deref(),
-            Some("https://panel.example.com/?module=monster&action=view&id=1039")
-        );
-    }
-
-    #[test]
-    fn monster_cache_warmup_skips_absolute_monster_images_and_item_first_results() {
-        let assets = AssetConfig {
-            base_url: Some("https://panel.example.com".to_string()),
-            item_icon_path: "https://cdn.example.com/items/{item_id}.png".to_string(),
-            monster_image_path: "https://cdn.example.com/mobs/{monster_id}.png".to_string(),
-            character_image_path: None,
-        };
-        let monster = crate::rathenafr::MonsterSearchEntry {
-            monster_id: 1039,
-            sprite: "BAPHOMET".to_string(),
-            display_name: "Baphomet".to_string(),
-            level: 81,
-            hp: 668000,
-            source_table: "mob_db".to_string(),
-        };
-        let item_first_results = SearchResults {
-            characters: Vec::new(),
-            items: vec![crate::rathenafr::ItemSearchEntry {
-                item_id: 501,
-                aegis_name: "Red_Potion".to_string(),
-                display_name: "Red Potion".to_string(),
-                item_type: "Healing".to_string(),
-                source_table: "item_db".to_string(),
-            }],
-            monsters: vec![monster.clone()],
-        };
-        let absolute_monster_results = SearchResults {
-            characters: Vec::new(),
-            items: Vec::new(),
-            monsters: vec![monster],
-        };
-
-        assert_eq!(monster_cache_warmup_url(&assets, &item_first_results), None);
-        assert_eq!(
-            monster_cache_warmup_url(&assets, &absolute_monster_results),
-            None
-        );
+    fn test_staff_role(
+        member_role_ids: &[u64],
+        staff_role_ids: &[u64],
+        admin_role_ids: &[u64],
+        owner_role_ids: &[u64],
+    ) -> bool {
+        has_configured_role(
+            member_role_ids,
+            StaffRole::Helper,
+            ConfiguredRoles {
+                helper: staff_role_ids,
+                moderator: &[],
+                gm: &[],
+                legacy_staff: staff_role_ids,
+                admin: admin_role_ids,
+                owner: owner_role_ids,
+            },
+        )
     }
 
     #[test]
@@ -3532,16 +2441,13 @@ mod tests {
     #[test]
     fn sensitive_staff_commands_are_not_cacheable() {
         let sensitive_commands = [
-            "accountstatus",
-            "accountchars",
-            "accountoverview",
-            "charquests",
-            "charinventory",
-            "charequipment",
-            "itemcount",
-            "itemowners",
-            "accountlist",
-            "banlist",
+            "createaccount",
+            "staff",
+            "mod",
+            "debug",
+            "audit",
+            "db",
+            "gmmsg",
         ];
 
         for command_name in sensitive_commands {

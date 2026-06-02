@@ -4,7 +4,6 @@ use anyhow::{anyhow, Result};
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum BroadcastMode {
     Broadcast,
-    Kami,
     KamiBlue,
     KamiColor(String),
 }
@@ -17,13 +16,6 @@ pub struct GameBridge {
 impl GameBridge {
     pub fn new(config: GameBridgeConfig) -> Self {
         Self { config }
-    }
-
-    pub fn is_available(&self) -> bool {
-        matches!(
-            self.config.mode,
-            GameBridgeMode::Bridge | GameBridgeMode::Test
-        )
     }
 
     pub async fn send_global_message(&self, mode: BroadcastMode, message: &str) -> Result<String> {

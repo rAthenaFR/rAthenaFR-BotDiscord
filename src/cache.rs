@@ -1,7 +1,6 @@
 use crate::rathenafr::{
-    BuyingStoreEntry, CastleSummary, ClassDistributionEntry, DatabaseStatus, GuildSummary,
-    MapStatsEntry, MarketBuyEntry, MarketOverview, MarketSellEntry, RAthenaFrServiceStatus,
-    VendingStoreEntry,
+    CastleSummary, DatabaseStatus, GuildSummary, MarketBuyEntry, MarketOverview, MarketSellEntry,
+    RAthenaFrServiceStatus,
 };
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -18,14 +17,10 @@ pub struct StatusCacheEntry {
 pub struct BotCache {
     pub status: TimedCache<String, StatusCacheEntry>,
     pub guilds: TimedCache<String, Vec<GuildSummary>>,
-    pub classes: TimedCache<String, Vec<ClassDistributionEntry>>,
-    pub map_stats: TimedCache<String, Vec<MapStatsEntry>>,
     pub castles: TimedCache<String, Vec<CastleSummary>>,
     pub who_sell: TimedCache<String, Vec<MarketSellEntry>>,
     pub who_buy: TimedCache<String, Vec<MarketBuyEntry>>,
     pub market: TimedCache<String, MarketOverview>,
-    pub venders: TimedCache<String, Vec<VendingStoreEntry>>,
-    pub buyers: TimedCache<String, Vec<BuyingStoreEntry>>,
 }
 
 pub struct TimedCache<K, V> {

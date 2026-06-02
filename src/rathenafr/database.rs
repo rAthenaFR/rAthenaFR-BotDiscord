@@ -28,7 +28,6 @@ pub enum DatabaseTable {
     AccRegStr,
     Login,
     Guild,
-    GuildAlliance,
     GuildCastle,
     GuildMember,
     GuildPosition,
@@ -74,7 +73,6 @@ impl DatabaseTable {
             Self::AccRegStr => "acc_reg_str",
             Self::Login => "login",
             Self::Guild => "guild",
-            Self::GuildAlliance => "guild_alliance",
             Self::GuildCastle => "guild_castle",
             Self::GuildMember => "guild_member",
             Self::GuildPosition => "guild_position",
@@ -510,36 +508,6 @@ impl RAthenaFrDatabase {
         Ok(count > 0)
     }
 
-    async fn table_has_columns(&self, table_name: &str, column_names: &[&str]) -> Result<bool> {
-        if !self.table_exists(table_name).await? {
-            return Ok(false);
-        }
-
-        for column_name in column_names {
-            let row = sqlx::query(
-                r#"
-                SELECT CAST(COUNT(*) AS SIGNED) AS column_count
-                FROM information_schema.columns
-                WHERE table_schema = DATABASE()
-                  AND table_name = ?
-                  AND column_name = ?
-                "#,
-            )
-            .bind(table_name)
-            .bind(column_name)
-            .fetch_one(&self.pool)
-            .await
-            .context("vérification de disponibilité des colonnes rAthena")?;
-
-            let count: i64 = row.try_get("column_count")?;
-            if count == 0 {
-                return Ok(false);
-            }
-        }
-
-        Ok(true)
-    }
-
     async fn table_columns(&self, table_name: &str) -> Result<Option<AvailableColumns>> {
         if !self.table_exists(table_name).await? {
             return Ok(None);
@@ -675,8 +643,7 @@ impl RAthenaFrDatabase {
                 CAST(c.class AS SIGNED) AS class_id,
                 CAST(c.base_level AS SIGNED) AS base_level,
                 CAST(c.job_level AS SIGNED) AS job_level,
-                c.last_map,
-                l.sex
+                c.last_map
             FROM `char` c
             INNER JOIN `login` l ON l.account_id = c.account_id
             WHERE c.online = 1 AND l.group_id < ?
@@ -698,7 +665,6 @@ impl RAthenaFrDatabase {
                     base_level: row.try_get("base_level")?,
                     job_level: row.try_get("job_level")?,
                     map: row.try_get("last_map")?,
-                    sex: row.try_get("sex")?,
                 })
             })
             .collect()
@@ -784,82 +750,6 @@ impl RAthenaFrDatabase {
                 })
             })
             .collect()
-    }
-
-    pub async fn search_characters(
-        &self,
-        group_threshold: i32,
-        query: &str,
-        limit: u32,
-    ) -> Result<Vec<CharacterSummary>> {
-        let pattern = format!("%{}%", query);
-        let prefix = format!("{}%", query);
-
-        let rows = sqlx::query(
-            r#"
-            SELECT
-                c.name,
-                CAST(c.class AS SIGNED) AS class_id,
-                CAST(c.base_level AS SIGNED) AS base_level,
-                CAST(c.job_level AS SIGNED) AS job_level,
-                c.last_map,
-                l.sex
-            FROM `char` c
-            INNER JOIN `login` l ON l.account_id = c.account_id
-            WHERE c.name LIKE ? AND l.group_id < ?
-            ORDER BY
-                CASE
-                    WHEN c.name = ? THEN 0
-                    WHEN c.name LIKE ? THEN 1
-                    ELSE 2
-                END,
-                c.name ASC
-            LIMIT ?
-            "#,
-        )
-        .bind(&pattern)
-        .bind(group_threshold)
-        .bind(query)
-        .bind(&prefix)
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await
-        .context("search characters")?;
-
-        rows.into_iter()
-            .map(|row| {
-                Ok(CharacterSummary {
-                    name: row.try_get("name")?,
-                    class_id: row.try_get("class_id")?,
-                    base_level: row.try_get("base_level")?,
-                    job_level: row.try_get("job_level")?,
-                    map: row.try_get("last_map")?,
-                    sex: row.try_get("sex")?,
-                })
-            })
-            .collect()
-    }
-
-    pub async fn search_all(
-        &self,
-        group_threshold: i32,
-        query: &str,
-        limit: u32,
-    ) -> Result<SearchResults> {
-        Ok(SearchResults {
-            characters: self
-                .search_characters(group_threshold, query, limit)
-                .await
-                .context("search characters for combined search")?,
-            items: self
-                .search_items(query, limit)
-                .await
-                .context("recherche d’items pour la recherche globale")?,
-            monsters: self
-                .search_monsters(query, limit)
-                .await
-                .context("recherche de monstres pour la recherche globale")?,
-        })
     }
 
     pub async fn search_items(&self, query: &str, limit: u32) -> Result<Vec<ItemSearchEntry>> {
@@ -1405,44 +1295,6 @@ impl RAthenaFrDatabase {
             .collect()
     }
 
-    pub async fn class_distribution(
-        &self,
-        group_threshold: i32,
-        limit: u32,
-    ) -> Result<Vec<ClassDistributionEntry>> {
-        let rows = sqlx::query(
-            r#"
-            SELECT
-                CAST(c.class AS SIGNED) AS class_id,
-                CAST(COUNT(*) AS SIGNED) AS characters,
-                CAST(SUM(CASE WHEN c.online = 1 THEN 1 ELSE 0 END) AS SIGNED) AS online_characters
-            FROM `char` c
-            INNER JOIN `login` l ON l.account_id = c.account_id
-            WHERE l.group_id < ?
-            GROUP BY c.class
-            ORDER BY characters DESC, online_characters DESC, class_id ASC
-            LIMIT ?
-            "#,
-        )
-        .bind(group_threshold)
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await
-        .context("récupération de la répartition des classes")?;
-
-        rows.into_iter()
-            .enumerate()
-            .map(|(index, row)| {
-                Ok(ClassDistributionEntry {
-                    rank: index + 1,
-                    class_id: row.try_get("class_id")?,
-                    characters: row.try_get("characters")?,
-                    online_characters: row.try_get("online_characters")?,
-                })
-            })
-            .collect()
-    }
-
     pub async fn map_stats(
         &self,
         group_threshold: i32,
@@ -1483,284 +1335,6 @@ impl RAthenaFrDatabase {
                 })
             })
             .collect()
-    }
-
-    pub async fn map_online_characters(
-        &self,
-        group_threshold: i32,
-        map: &str,
-        limit: u32,
-    ) -> Result<Vec<CharacterSummary>> {
-        let rows = sqlx::query(
-            r#"
-            SELECT
-                c.name,
-                CAST(c.class AS SIGNED) AS class_id,
-                CAST(c.base_level AS SIGNED) AS base_level,
-                CAST(c.job_level AS SIGNED) AS job_level,
-                c.last_map,
-                l.sex
-            FROM `char` c
-            INNER JOIN `login` l ON l.account_id = c.account_id
-            WHERE c.online = 1
-              AND c.last_map = ?
-              AND l.group_id < ?
-            ORDER BY c.base_level DESC, c.job_level DESC, c.name ASC
-            LIMIT ?
-            "#,
-        )
-        .bind(map)
-        .bind(group_threshold)
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await
-        .context("récupération des personnages connectés sur la map")?;
-
-        rows.into_iter()
-            .map(|row| {
-                Ok(CharacterSummary {
-                    name: row.try_get("name")?,
-                    class_id: row.try_get("class_id")?,
-                    base_level: row.try_get("base_level")?,
-                    job_level: row.try_get("job_level")?,
-                    map: row.try_get("last_map")?,
-                    sex: row.try_get("sex")?,
-                })
-            })
-            .collect()
-    }
-
-    pub async fn find_party(
-        &self,
-        name: &str,
-        group_threshold: i32,
-    ) -> Result<Option<PartyDetails>> {
-        let row = sqlx::query(
-            r#"
-            SELECT
-                p.name AS party_name,
-                leader.name AS leader_name,
-                CAST(p.exp AS SIGNED) AS exp_mode,
-                CAST(p.item AS SIGNED) AS item_mode,
-                CAST(COUNT(c.char_id) AS SIGNED) AS members,
-                CAST(COALESCE(SUM(CASE WHEN c.online = 1 THEN 1 ELSE 0 END), 0) AS SIGNED) AS online_members
-            FROM `party` p
-            LEFT JOIN `char` leader ON leader.char_id = p.leader_char
-            LEFT JOIN `char` c ON c.party_id = p.party_id
-            LEFT JOIN `login` l ON l.account_id = c.account_id
-            WHERE p.name = ?
-              AND (c.char_id IS NULL OR l.group_id < ?)
-            GROUP BY p.party_id, p.name, leader.name, p.exp, p.item
-            LIMIT 1
-            "#,
-        )
-        .bind(name)
-        .bind(group_threshold)
-        .fetch_optional(&self.pool)
-        .await
-        .context("find party")?;
-
-        match row {
-            Some(row) => Ok(Some(PartyDetails {
-                name: row.try_get("party_name")?,
-                leader_name: row.try_get("leader_name")?,
-                members: row.try_get("members")?,
-                online_members: row.try_get("online_members")?,
-                exp_mode: row.try_get("exp_mode")?,
-                item_mode: row.try_get("item_mode")?,
-            })),
-            None => Ok(None),
-        }
-    }
-
-    pub async fn party_members(
-        &self,
-        party_name: &str,
-        group_threshold: i32,
-        limit: u32,
-    ) -> Result<Vec<PartyMemberSummary>> {
-        let rows = sqlx::query(
-            r#"
-            SELECT
-                c.name,
-                CAST(c.class AS SIGNED) AS class_id,
-                CAST(c.base_level AS SIGNED) AS base_level,
-                CAST(c.job_level AS SIGNED) AS job_level,
-                CAST(c.online AS SIGNED) AS online,
-                c.last_map,
-                CAST(CASE WHEN c.char_id = p.leader_char THEN 1 ELSE 0 END AS SIGNED) AS is_leader
-            FROM `party` p
-            INNER JOIN `char` c ON c.party_id = p.party_id
-            INNER JOIN `login` l ON l.account_id = c.account_id
-            WHERE p.name = ? AND l.group_id < ?
-            ORDER BY is_leader DESC, c.online DESC, c.base_level DESC, c.job_level DESC, c.name ASC
-            LIMIT ?
-            "#,
-        )
-        .bind(party_name)
-        .bind(group_threshold)
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await
-        .context("récupération des membres du groupe")?;
-
-        rows.into_iter()
-            .map(|row| {
-                Ok(PartyMemberSummary {
-                    name: row.try_get("name")?,
-                    class_id: row.try_get("class_id")?,
-                    base_level: row.try_get("base_level")?,
-                    job_level: row.try_get("job_level")?,
-                    online: row.try_get::<i32, _>("online")? == 1,
-                    map: row.try_get("last_map")?,
-                    is_leader: row.try_get::<i32, _>("is_leader")? == 1,
-                })
-            })
-            .collect()
-    }
-
-    pub async fn find_homunculus(
-        &self,
-        character_name: &str,
-        group_threshold: i32,
-    ) -> Result<Option<HomunculusProfile>> {
-        let row = sqlx::query(
-            r#"
-            SELECT
-                c.name AS owner_name,
-                h.name AS homunculus_name,
-                CAST(h.class AS SIGNED) AS class_id,
-                CAST(h.level AS SIGNED) AS level,
-                CAST(h.intimacy AS SIGNED) AS intimacy,
-                CAST(h.hunger AS SIGNED) AS hunger,
-                CAST(h.alive AS SIGNED) AS alive,
-                CAST(h.vaporize AS SIGNED) AS vaporize,
-                CAST(h.autofeed AS SIGNED) AS autofeed,
-                CAST(h.hp AS SIGNED) AS hp,
-                CAST(h.max_hp AS SIGNED) AS max_hp,
-                CAST(h.sp AS SIGNED) AS sp,
-                CAST(h.max_sp AS SIGNED) AS max_sp
-            FROM `char` c
-            INNER JOIN `login` l ON l.account_id = c.account_id
-            INNER JOIN `homunculus` h ON h.char_id = c.char_id
-            WHERE c.name = ? AND l.group_id < ?
-            ORDER BY h.homun_id DESC
-            LIMIT 1
-            "#,
-        )
-        .bind(character_name)
-        .bind(group_threshold)
-        .fetch_optional(&self.pool)
-        .await
-        .context("find homunculus")?;
-
-        match row {
-            Some(row) => Ok(Some(HomunculusProfile {
-                owner_name: row.try_get("owner_name")?,
-                name: row.try_get("homunculus_name")?,
-                class_id: row.try_get("class_id")?,
-                level: row.try_get("level")?,
-                intimacy: row.try_get("intimacy")?,
-                hunger: row.try_get("hunger")?,
-                alive: row.try_get::<i32, _>("alive")? == 1,
-                vaporized: row.try_get::<i32, _>("vaporize")? == 1,
-                autofeed: row.try_get::<i32, _>("autofeed")? == 1,
-                hp: row.try_get("hp")?,
-                max_hp: row.try_get("max_hp")?,
-                sp: row.try_get("sp")?,
-                max_sp: row.try_get("max_sp")?,
-            })),
-            None => Ok(None),
-        }
-    }
-
-    pub async fn find_pet(
-        &self,
-        character_name: &str,
-        group_threshold: i32,
-    ) -> Result<Option<PetProfile>> {
-        let row = sqlx::query(
-            r#"
-            SELECT
-                c.name AS owner_name,
-                p.name AS pet_name,
-                CAST(p.class AS SIGNED) AS class_id,
-                CAST(p.level AS SIGNED) AS level,
-                CAST(p.intimate AS SIGNED) AS intimacy,
-                CAST(p.hungry AS SIGNED) AS hunger,
-                CAST(p.incubate AS SIGNED) AS incubate,
-                CAST(p.autofeed AS SIGNED) AS autofeed
-            FROM `char` c
-            INNER JOIN `login` l ON l.account_id = c.account_id
-            INNER JOIN `pet` p ON p.char_id = c.char_id
-            WHERE c.name = ? AND l.group_id < ?
-            ORDER BY p.pet_id DESC
-            LIMIT 1
-            "#,
-        )
-        .bind(character_name)
-        .bind(group_threshold)
-        .fetch_optional(&self.pool)
-        .await
-        .context("find pet")?;
-
-        match row {
-            Some(row) => Ok(Some(PetProfile {
-                owner_name: row.try_get("owner_name")?,
-                name: row.try_get("pet_name")?,
-                class_id: row.try_get("class_id")?,
-                level: row.try_get("level")?,
-                intimacy: row.try_get("intimacy")?,
-                hunger: row.try_get("hunger")?,
-                incubated: row.try_get::<i32, _>("incubate")? == 1,
-                autofeed: row.try_get::<i32, _>("autofeed")? == 1,
-            })),
-            None => Ok(None),
-        }
-    }
-
-    pub async fn zeny_summary(&self, group_threshold: i32) -> Result<ZenySummary> {
-        let row = sqlx::query(
-            r#"
-            SELECT
-                CAST(COUNT(*) AS SIGNED) AS character_count,
-                CAST(COALESCE(SUM(c.zeny), 0) AS SIGNED) AS total_zeny,
-                CAST(COALESCE(AVG(c.zeny), 0) AS SIGNED) AS average_zeny,
-                (
-                    SELECT rc.name
-                    FROM `char` rc
-                    INNER JOIN `login` rl ON rl.account_id = rc.account_id
-                    WHERE rl.group_id < ?
-                    ORDER BY rc.zeny DESC, rc.base_level DESC, rc.name ASC
-                    LIMIT 1
-                ) AS richest_name,
-                COALESCE((
-                    SELECT CAST(rc.zeny AS SIGNED)
-                    FROM `char` rc
-                    INNER JOIN `login` rl ON rl.account_id = rc.account_id
-                    WHERE rl.group_id < ?
-                    ORDER BY rc.zeny DESC, rc.base_level DESC, rc.name ASC
-                    LIMIT 1
-                ), 0) AS richest_zeny
-            FROM `char` c
-            INNER JOIN `login` l ON l.account_id = c.account_id
-            WHERE l.group_id < ?
-            "#,
-        )
-        .bind(group_threshold)
-        .bind(group_threshold)
-        .bind(group_threshold)
-        .fetch_one(&self.pool)
-        .await
-        .context("récupération du résumé zeny")?;
-
-        Ok(ZenySummary {
-            total_zeny: row.try_get("total_zeny")?,
-            average_zeny: row.try_get("average_zeny")?,
-            character_count: row.try_get("character_count")?,
-            richest_name: row.try_get("richest_name")?,
-            richest_zeny: row.try_get("richest_zeny")?,
-        })
     }
 
     pub async fn castles(&self, limit: u32) -> Result<Vec<CastleSummary>> {
@@ -1838,189 +1412,6 @@ impl RAthenaFrDatabase {
             })),
             None => Ok(None),
         }
-    }
-
-    pub async fn guild_alliances(
-        &self,
-        guild_name: &str,
-        limit: u32,
-    ) -> Result<Vec<GuildAllianceEntry>> {
-        let rows = sqlx::query(
-            r#"
-            SELECT
-                CAST(ga.opposition AS SIGNED) AS opposition,
-                CAST(ga.alliance_id AS SIGNED) AS target_guild_id,
-                COALESCE(NULLIF(target.name, ''), NULLIF(ga.name, ''), CONCAT('Guilde ', ga.alliance_id)) AS target_name
-            FROM `guild` g
-            INNER JOIN `guild_alliance` ga ON ga.guild_id = g.guild_id
-            LEFT JOIN `guild` target ON target.guild_id = ga.alliance_id
-            WHERE g.name = ?
-            ORDER BY ga.opposition ASC, target_name ASC
-            LIMIT ?
-            "#,
-        )
-        .bind(guild_name)
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await
-        .context("récupération des alliances de guilde")?;
-
-        rows.into_iter()
-            .map(|row| {
-                let opposition: i32 = row.try_get("opposition")?;
-                Ok(GuildAllianceEntry {
-                    relation: if opposition == 1 {
-                        "Opposition".to_string()
-                    } else {
-                        "Alliance".to_string()
-                    },
-                    target_guild_id: row.try_get("target_guild_id")?,
-                    target_name: row.try_get("target_name")?,
-                })
-            })
-            .collect()
-    }
-
-    pub async fn guild_skills(&self, guild_name: &str, limit: u32) -> Result<Vec<GuildSkillEntry>> {
-        let rows = sqlx::query(
-            r#"
-            SELECT
-                CAST(gs.id AS SIGNED) AS skill_id,
-                CAST(gs.lv AS SIGNED) AS skill_level
-            FROM `guild` g
-            INNER JOIN `guild_skill` gs ON gs.guild_id = g.guild_id
-            WHERE g.name = ? AND gs.lv > 0
-            ORDER BY gs.id ASC
-            LIMIT ?
-            "#,
-        )
-        .bind(guild_name)
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await
-        .context("récupération des compétences de guilde")?;
-
-        rows.into_iter()
-            .map(|row| {
-                Ok(GuildSkillEntry {
-                    skill_id: row.try_get("skill_id")?,
-                    level: row.try_get("skill_level")?,
-                })
-            })
-            .collect()
-    }
-
-    pub async fn top_homunculus(
-        &self,
-        group_threshold: i32,
-        limit: u32,
-    ) -> Result<Vec<HomunculusRankingEntry>> {
-        let rows = sqlx::query(
-            r#"
-            SELECT
-                c.name AS owner_name,
-                h.name AS homunculus_name,
-                CAST(h.class AS SIGNED) AS class_id,
-                CAST(h.level AS SIGNED) AS level,
-                CAST(h.intimacy AS SIGNED) AS intimacy,
-                CAST(h.hunger AS SIGNED) AS hunger
-            FROM `homunculus` h
-            INNER JOIN `char` c ON c.char_id = h.char_id
-            INNER JOIN `login` l ON l.account_id = c.account_id
-            WHERE l.group_id < ?
-            ORDER BY h.level DESC, h.intimacy DESC, h.name ASC
-            LIMIT ?
-            "#,
-        )
-        .bind(group_threshold)
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await
-        .context("récupération du classement des homoncules")?;
-
-        rows.into_iter()
-            .enumerate()
-            .map(|(index, row)| {
-                Ok(HomunculusRankingEntry {
-                    rank: index + 1,
-                    owner_name: row.try_get("owner_name")?,
-                    name: row.try_get("homunculus_name")?,
-                    class_id: row.try_get("class_id")?,
-                    level: row.try_get("level")?,
-                    intimacy: row.try_get("intimacy")?,
-                    hunger: row.try_get("hunger")?,
-                })
-            })
-            .collect()
-    }
-
-    pub async fn top_pets(&self, group_threshold: i32, limit: u32) -> Result<Vec<PetRankingEntry>> {
-        let rows = sqlx::query(
-            r#"
-            SELECT
-                c.name AS owner_name,
-                p.name AS pet_name,
-                CAST(p.class AS SIGNED) AS class_id,
-                CAST(p.level AS SIGNED) AS level,
-                CAST(p.intimate AS SIGNED) AS intimacy,
-                CAST(p.hungry AS SIGNED) AS hunger
-            FROM `pet` p
-            INNER JOIN `char` c ON c.char_id = p.char_id
-            INNER JOIN `login` l ON l.account_id = c.account_id
-            WHERE l.group_id < ?
-            ORDER BY p.intimate DESC, p.level DESC, p.name ASC
-            LIMIT ?
-            "#,
-        )
-        .bind(group_threshold)
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await
-        .context("récupération du classement des familiers")?;
-
-        rows.into_iter()
-            .enumerate()
-            .map(|(index, row)| {
-                Ok(PetRankingEntry {
-                    rank: index + 1,
-                    owner_name: row.try_get("owner_name")?,
-                    name: row.try_get("pet_name")?,
-                    class_id: row.try_get("class_id")?,
-                    level: row.try_get("level")?,
-                    intimacy: row.try_get("intimacy")?,
-                    hunger: row.try_get("hunger")?,
-                })
-            })
-            .collect()
-    }
-
-    pub async fn quest_stats(&self, quest_id: i64, group_threshold: i32) -> Result<QuestStats> {
-        let row = sqlx::query(
-            r#"
-            SELECT
-                CAST(COUNT(*) AS SIGNED) AS total_characters,
-                CAST(COALESCE(SUM(CASE WHEN q.state = '0' THEN 1 ELSE 0 END), 0) AS SIGNED) AS state_0,
-                CAST(COALESCE(SUM(CASE WHEN q.state = '1' THEN 1 ELSE 0 END), 0) AS SIGNED) AS state_1,
-                CAST(COALESCE(SUM(CASE WHEN q.state = '2' THEN 1 ELSE 0 END), 0) AS SIGNED) AS state_2
-            FROM `quest` q
-            INNER JOIN `char` c ON c.char_id = q.char_id
-            INNER JOIN `login` l ON l.account_id = c.account_id
-            WHERE q.quest_id = ? AND l.group_id < ?
-            "#,
-        )
-        .bind(quest_id)
-        .bind(group_threshold)
-        .fetch_one(&self.pool)
-        .await
-        .context("récupération des statistiques de quête")?;
-
-        Ok(QuestStats {
-            quest_id,
-            total_characters: row.try_get("total_characters")?,
-            state_0: row.try_get("state_0")?,
-            state_1: row.try_get("state_1")?,
-            state_2: row.try_get("state_2")?,
-        })
     }
 
     pub async fn account_characters(
@@ -2128,72 +1519,6 @@ impl RAthenaFrDatabase {
             })),
             None => Ok(None),
         }
-    }
-
-    pub async fn account_list(&self, limit: u32, page: u32) -> Result<AccountList> {
-        let page = page.max(1);
-        let offset = page.saturating_sub(1).saturating_mul(limit);
-        let total_row = sqlx::query(
-            r#"
-            SELECT CAST(COUNT(*) AS SIGNED) AS total_accounts
-            FROM `login`
-            "#,
-        )
-        .fetch_one(&self.pool)
-        .await
-        .context("count accounts")?;
-
-        let rows = sqlx::query(
-            r#"
-            SELECT
-                CAST(l.account_id AS SIGNED) AS account_id,
-                l.userid,
-                l.sex,
-                CAST(l.group_id AS SIGNED) AS group_id,
-                CAST(l.state AS SIGNED) AS account_state,
-                DATE_FORMAT(l.lastlogin, '%Y-%m-%d %H:%i:%s') AS lastlogin,
-                CAST(COUNT(c.char_id) AS SIGNED) AS characters
-            FROM `login` l
-            LEFT JOIN `char` c ON c.account_id = l.account_id
-            GROUP BY
-                l.account_id,
-                l.userid,
-                l.sex,
-                l.group_id,
-                l.state,
-                l.lastlogin
-            ORDER BY l.account_id DESC
-            LIMIT ? OFFSET ?
-            "#,
-        )
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(&self.pool)
-        .await
-        .context("récupération de la liste des comptes")?;
-
-        let entries = rows
-            .into_iter()
-            .map(|row| {
-                Ok(AccountListEntry {
-                    account_id: row.try_get("account_id")?,
-                    userid: row.try_get("userid")?,
-                    sex: row.try_get("sex")?,
-                    group_id: row.try_get("group_id")?,
-                    state: row.try_get("account_state")?,
-                    characters: row.try_get("characters")?,
-                    lastlogin: row.try_get("lastlogin")?,
-                })
-            })
-            .collect::<Result<Vec<_>>>()?;
-
-        Ok(AccountList {
-            total_accounts: total_row.try_get("total_accounts")?,
-            page,
-            per_page: limit,
-            offset,
-            entries,
-        })
     }
 
     pub async fn create_account(
@@ -2372,39 +1697,6 @@ impl RAthenaFrDatabase {
                 })
             })
             .collect()
-    }
-
-    pub async fn item_count(&self, item_id: i64) -> Result<ItemCountSummary> {
-        let row = sqlx::query(
-            r#"
-            SELECT
-                COALESCE((SELECT CAST(SUM(amount) AS SIGNED) FROM `inventory` WHERE nameid = ?), 0) AS inventory_amount,
-                COALESCE((SELECT CAST(SUM(amount) AS SIGNED) FROM `cart_inventory` WHERE nameid = ?), 0) AS cart_amount,
-                COALESCE((SELECT CAST(SUM(amount) AS SIGNED) FROM `storage` WHERE nameid = ?), 0) AS storage_amount,
-                COALESCE((SELECT CAST(SUM(amount) AS SIGNED) FROM `guild_storage` WHERE nameid = ?), 0) AS guild_storage_amount
-            "#,
-        )
-        .bind(item_id)
-        .bind(item_id)
-        .bind(item_id)
-        .bind(item_id)
-        .fetch_one(&self.pool)
-        .await
-        .context("comptage de l’item dans les tables d’inventaire rAthenaFR")?;
-
-        let inventory_amount = row.try_get("inventory_amount")?;
-        let cart_amount = row.try_get("cart_amount")?;
-        let storage_amount = row.try_get("storage_amount")?;
-        let guild_storage_amount = row.try_get("guild_storage_amount")?;
-
-        Ok(ItemCountSummary {
-            item_id,
-            inventory_amount,
-            cart_amount,
-            storage_amount,
-            guild_storage_amount,
-            total_amount: inventory_amount + cart_amount + storage_amount + guild_storage_amount,
-        })
     }
 
     pub async fn item_owners(&self, item_id: i64, limit: u32) -> Result<Vec<ItemOwnerEntry>> {
@@ -2709,108 +2001,6 @@ impl RAthenaFrDatabase {
             buy_amount: row.try_get("buy_amount")?,
             highest_buy_price: row.try_get("highest_buy_price")?,
         })
-    }
-
-    pub async fn vending_stores(
-        &self,
-        group_threshold: i32,
-        limit: u32,
-    ) -> Result<Vec<VendingStoreEntry>> {
-        let rows = sqlx::query(
-            r#"
-            SELECT
-                c.name AS merchant_name,
-                v.title AS shop_title,
-                v.map,
-                CAST(v.x AS SIGNED) AS x,
-                CAST(v.y AS SIGNED) AS y,
-                CAST(COUNT(vi.`index`) AS SIGNED) AS item_count,
-                CAST(COALESCE(SUM(vi.amount), 0) AS SIGNED) AS total_amount,
-                CAST(MIN(vi.price) AS SIGNED) AS min_price
-            FROM `vendings` v
-            INNER JOIN `char` c ON c.char_id = v.char_id
-            INNER JOIN `login` l ON l.account_id = c.account_id
-            LEFT JOIN `vending_items` vi ON vi.vending_id = v.id
-            WHERE l.group_id < ?
-            GROUP BY c.name, v.title, v.map, v.x, v.y
-            ORDER BY item_count DESC, c.name ASC
-            LIMIT ?
-            "#,
-        )
-        .bind(group_threshold)
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await
-        .context("récupération des boutiques vending actives")?;
-
-        rows.into_iter()
-            .enumerate()
-            .map(|(index, row)| {
-                Ok(VendingStoreEntry {
-                    rank: index + 1,
-                    merchant_name: row.try_get("merchant_name")?,
-                    shop_title: row.try_get("shop_title")?,
-                    map: row.try_get("map")?,
-                    x: row.try_get("x")?,
-                    y: row.try_get("y")?,
-                    item_count: row.try_get("item_count")?,
-                    total_amount: row.try_get("total_amount")?,
-                    min_price: row.try_get("min_price")?,
-                })
-            })
-            .collect()
-    }
-
-    pub async fn buying_stores(
-        &self,
-        group_threshold: i32,
-        limit: u32,
-    ) -> Result<Vec<BuyingStoreEntry>> {
-        let rows = sqlx::query(
-            r#"
-            SELECT
-                c.name AS buyer_name,
-                bs.title AS shop_title,
-                bs.map,
-                CAST(bs.x AS SIGNED) AS x,
-                CAST(bs.y AS SIGNED) AS y,
-                CAST(bs.`limit` AS SIGNED) AS zeny_limit,
-                CAST(COUNT(bsi.`index`) AS SIGNED) AS item_count,
-                CAST(COALESCE(SUM(bsi.amount), 0) AS SIGNED) AS total_amount,
-                CAST(MAX(bsi.price) AS SIGNED) AS max_price
-            FROM `buyingstores` bs
-            INNER JOIN `char` c ON c.char_id = bs.char_id
-            INNER JOIN `login` l ON l.account_id = c.account_id
-            LEFT JOIN `buyingstore_items` bsi ON bsi.buyingstore_id = bs.id
-            WHERE l.group_id < ?
-            GROUP BY c.name, bs.title, bs.map, bs.x, bs.y, bs.`limit`
-            ORDER BY item_count DESC, c.name ASC
-            LIMIT ?
-            "#,
-        )
-        .bind(group_threshold)
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await
-        .context("récupération des buying stores actifs")?;
-
-        rows.into_iter()
-            .enumerate()
-            .map(|(index, row)| {
-                Ok(BuyingStoreEntry {
-                    rank: index + 1,
-                    buyer_name: row.try_get("buyer_name")?,
-                    shop_title: row.try_get("shop_title")?,
-                    map: row.try_get("map")?,
-                    x: row.try_get("x")?,
-                    y: row.try_get("y")?,
-                    item_count: row.try_get("item_count")?,
-                    total_amount: row.try_get("total_amount")?,
-                    max_price: row.try_get("max_price")?,
-                    zeny_limit: row.try_get("zeny_limit")?,
-                })
-            })
-            .collect()
     }
 
     pub async fn item_detail_lines(
@@ -3119,7 +2309,7 @@ impl RAthenaFrDatabase {
             "Drops de `{}` (`{}`):",
             monster.display_name, monster.monster_id
         )];
-        for (_index, (_id_column, _rate_column, label)) in pairs.iter().enumerate() {
+        for (_id_column, _rate_column, label) in pairs.iter() {
             if lines.len() > limit as usize {
                 break;
             }
@@ -3389,16 +2579,41 @@ impl RAthenaFrDatabase {
         character_name: &str,
         limit: u32,
     ) -> Result<Vec<String>> {
-        self.character_container_lines(
-            "cart_inventory",
-            "Chariot",
-            character_name,
-            "ci",
-            "INNER JOIN `char` c ON c.char_id = ci.char_id",
-            "c.name = ?",
-            limit,
+        if !self.table_exists("cart_inventory").await? {
+            return Ok(vec!["Table `cart_inventory` absente.".to_string()]);
+        }
+        let rows = sqlx::query(
+            r#"
+            SELECT
+                CAST(ci.nameid AS SIGNED) AS item_id,
+                CAST(ci.amount AS SIGNED) AS amount,
+                CAST(COALESCE(ci.refine, 0) AS SIGNED) AS refine
+            FROM `cart_inventory` ci
+            INNER JOIN `char` c ON c.char_id = ci.char_id
+            WHERE c.name = ?
+            ORDER BY ci.nameid ASC
+            LIMIT ?
+            "#,
         )
+        .bind(character_name)
+        .bind(limit)
+        .fetch_all(&self.pool)
         .await
+        .context("recuperation du chariot du personnage")?;
+
+        Ok(join_limited_lines(
+            rows.into_iter()
+                .map(|row| {
+                    format!(
+                        "Item `{}` x`{}` refine `+{}`",
+                        row.try_get::<i64, _>("item_id").unwrap_or_default(),
+                        row.try_get::<i64, _>("amount").unwrap_or_default(),
+                        row.try_get::<i64, _>("refine").unwrap_or_default()
+                    )
+                })
+                .collect(),
+            "Aucun item n'a ete trouve dans le chariot.",
+        ))
     }
 
     pub async fn character_storage_lines(
@@ -3470,55 +2685,6 @@ impl RAthenaFrDatabase {
                 })
                 .collect(),
             "Aucun item n’a été trouvé dans le storage de guilde.",
-        ))
-    }
-
-    async fn character_container_lines(
-        &self,
-        table_name: &str,
-        label: &str,
-        character_name: &str,
-        alias: &str,
-        join_clause: &str,
-        where_clause: &str,
-        limit: u32,
-    ) -> Result<Vec<String>> {
-        if !self.table_exists(table_name).await? {
-            return Ok(vec![format!("Table `{table_name}` absente.")]);
-        }
-        let sql = format!(
-            r#"
-            SELECT
-                CAST({alias}.nameid AS SIGNED) AS item_id,
-                CAST({alias}.amount AS SIGNED) AS amount,
-                CAST(COALESCE({alias}.refine, 0) AS SIGNED) AS refine
-            FROM {}
-            {join_clause}
-            WHERE {where_clause}
-            ORDER BY {alias}.nameid ASC
-            LIMIT ?
-            "#,
-            quote_identifier(table_name),
-        );
-        let rows = sqlx::query(&sql)
-            .bind(character_name)
-            .bind(limit)
-            .fetch_all(&self.pool)
-            .await
-            .with_context(|| format!("récupération de {label} pour le personnage"))?;
-
-        Ok(join_limited_lines(
-            rows.into_iter()
-                .map(|row| {
-                    format!(
-                        "Item `{}` x`{}` refine `+{}`",
-                        row.try_get::<i64, _>("item_id").unwrap_or_default(),
-                        row.try_get::<i64, _>("amount").unwrap_or_default(),
-                        row.try_get::<i64, _>("refine").unwrap_or_default()
-                    )
-                })
-                .collect(),
-            &format!("Aucun item n’a été trouvé dans {label}."),
         ))
     }
 
