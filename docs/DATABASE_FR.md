@@ -25,6 +25,24 @@ GRANT INSERT ON `ragnarok`.`login` TO 'rathenafr_bot'@'%';
 
 Aucune autre commande de cette version n’est censée écrire en base.
 
+## Exception GMMSG SQL Queue
+
+Si `RATHENAFR_GMMSG_MODE=sql_queue`, `/gmmsg` ajoute des messages dans la file SQL `discord_gmmsg_queue`.
+
+Permission minimale additionnelle :
+
+```sql
+GRANT INSERT ON `ragnarok`.`discord_gmmsg_queue` TO 'rathenafr_bot'@'%';
+```
+
+La table attend une colonne `message` en `VARBINARY(180)` afin de stocker les octets Windows-1252 affichés correctement par le client Ragnarok Online.
+
+> [!IMPORTANT]
+> Le bot insère uniquement une ligne `pending`. Le script NPC rAthena doit lire la file, annoncer le message en jeu et passer le statut à `done`.
+
+> [!WARNING]
+> Ne donne pas `UPDATE`, `DELETE`, `DROP`, `ALTER` ou `CREATE` au bot pour gérer la file GMMSG. Ces droits relèvent de l’installation ou de la maintenance SQL, pas de l’exécution normale.
+
 ## Tables principales
 
 Les commandes lisent les tables seulement si elles existent :

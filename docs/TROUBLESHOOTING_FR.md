@@ -77,8 +77,15 @@ RATHENAFR_GMMSG_MODE=disabled
 
 Passe en `test` pour valider la commande sans envoi.
 
+Passe en `sql_queue` pour envoyer les messages via la file SQL rAthena :
+
+```env
+RATHENAFR_GMMSG_MODE=sql_queue
+RATHENAFR_GMMSG_ENCODING=windows1252
+```
+
 > [!IMPORTANT]
-> **GameBridge**
->
-> Le mode `bridge` exige une implémentation GameBridge map-server réelle.
-> L’abstraction existe, mais aucun transport n’est actif par défaut.
+> Le mode `sql_queue` nécessite la table `discord_gmmsg_queue`, sa colonne `message` en `VARBINARY(180)` et un script NPC rAthena chargé depuis `npc/scripts_custom.conf`.
+
+> [!TIP]
+> Si les accents français s’affichent mal en jeu, vérifie que `discord_gmmsg_queue.message` est bien en `VARBINARY(180)` et que `RATHENAFR_GMMSG_ENCODING=windows1252`.

@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.1
+
+### Ajouté
+
+- Ajout du bridge SQL queue pour `/gmmsg` via `discord_gmmsg_queue`.
+- Ajout du mode `RATHENAFR_GMMSG_MODE=sql_queue`.
+- Ajout de `RATHENAFR_GMMSG_ENCODING=windows1252` pour stocker les messages en octets compatibles client Ragnarok Online.
+- Ajout du schéma attendu avec `discord_gmmsg_queue.message` en `VARBINARY(180)`.
+
+### Modifié
+
+- Mise à jour de la documentation `/gmmsg`, configuration, base de données, sécurité et installation.
+- Mise à jour des exemples `.env.example` et `.env.docker.example`.
+
+### Corrigé
+
+- Correction de la CI Clippy en supprimant le code mort des anciennes commandes retirées.
+- Refus des caractères non compatibles Windows-1252, notamment les emojis, pour éviter les messages illisibles en jeu.
+
 ## 0.2.0
 
 ### Modifié

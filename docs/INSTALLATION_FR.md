@@ -70,3 +70,12 @@ Le principe recommandé reste Docker, avec une base MariaDB/MySQL joignable par 
 
 > [!IMPORTANT]
 > Les commandes de compte nécessitent des permissions SQL supplémentaires. Consulte `ACCOUNT_MANAGEMENT_FR.md` avant de les activer.
+
+## Option `/gmmsg` en jeu
+
+Pour envoyer `/gmmsg` en jeu, configure `RATHENAFR_GMMSG_MODE=sql_queue`, installe la table `discord_gmmsg_queue`, puis charge le script NPC rAthena correspondant dans `npc/scripts_custom.conf`.
+
+> [!IMPORTANT]
+> La colonne `discord_gmmsg_queue.message` doit être en `VARBINARY(180)` pour conserver les octets Windows-1252 nécessaires aux accents français côté client Ragnarok Online.
+
+Consulte [Bridge GMMSG SQL Queue](GMMSG_BRIDGE_FR.md) pour la procédure complète.

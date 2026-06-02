@@ -68,6 +68,7 @@ Les tables item/mob acceptent `item_db` ou `item_db_re`, et `mob_db` ou `mob_db_
 
 ```env
 RATHENAFR_GMMSG_MODE=disabled
+RATHENAFR_GMMSG_ENCODING=windows1252
 RATHENAFR_GMMSG_MAX_LENGTH=180
 RATHENAFR_GMMSG_MIN_ROLE=gm
 RATHENAFR_DEBUG_MIN_ROLE=gm
@@ -78,15 +79,22 @@ Modes disponibles pour `/gmmsg` :
 
 - `disabled` : aucun envoi en jeu.
 - `test` : réponse et log uniquement.
-- `bridge` : utilisation de GameBridge.
+- `sql_queue` : insertion dans `discord_gmmsg_queue`, puis traitement par un script NPC rAthena.
+
+Encodages disponibles :
+
+- `windows1252` : valeur recommandée pour le client Ragnarok Online et les accents français.
+- `utf8` : réservé aux installations qui le supportent explicitement côté NPC/client.
 
 > [!IMPORTANT]
-> **Transport GameBridge**
->
-> Aucun transport map-server concret n’est actif par défaut.
-> Le mode `bridge` suppose qu’une implémentation GameBridge opérationnelle est disponible.
+> Le mode `sql_queue` nécessite la table `discord_gmmsg_queue`, la colonne `message` en `VARBINARY(180)` et un script NPC rAthena chargé côté serveur.
+
+> [!WARNING]
+> Les emojis et les caractères hors Windows-1252 sont refusés avec `RATHENAFR_GMMSG_ENCODING=windows1252`.
 
 `/gmmsg color` valide strictement `RRGGBB`. Les messages sont nettoyés et les mentions `@everyone`/`@here` sont neutralisées dans les logs Discord.
+
+Pour le détail complet, consulte [Bridge GMMSG SQL Queue](GMMSG_BRIDGE_FR.md).
 
 ## Création de compte
 
