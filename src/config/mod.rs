@@ -72,6 +72,10 @@ pub struct CacheConfig {
 pub struct AccountCommandsConfig {
     pub creation_enabled: bool,
     pub password_mode: AccountPasswordMode,
+    pub manage_enabled: bool,
+    pub delete_enabled: bool,
+    pub manage_min_role: StaffRole,
+    pub delete_min_role: StaffRole,
 }
 
 #[derive(Debug, Clone)]
@@ -352,6 +356,14 @@ impl AccountCommandsConfig {
             )?
             .unwrap_or(false),
             password_mode: parse_account_password_mode(lookup)?,
+            manage_enabled: parse_bool_optional_from(lookup, "RATHENAFR_ACCOUNT_MANAGE_ENABLED")?
+                .unwrap_or(false),
+            delete_enabled: parse_bool_optional_from(lookup, "RATHENAFR_ACCOUNT_DELETE_ENABLED")?
+                .unwrap_or(false),
+            manage_min_role: parse_staff_role(lookup, "RATHENAFR_ACCOUNT_MANAGE_MIN_ROLE")?
+                .unwrap_or(StaffRole::Admin),
+            delete_min_role: parse_staff_role(lookup, "RATHENAFR_ACCOUNT_DELETE_MIN_ROLE")?
+                .unwrap_or(StaffRole::Owner),
         })
     }
 }
@@ -760,6 +772,10 @@ mod tests {
 
         assert!(!config.creation_enabled);
         assert_eq!(config.password_mode, AccountPasswordMode::Plain);
+        assert!(!config.manage_enabled);
+        assert!(!config.delete_enabled);
+        assert_eq!(config.manage_min_role, StaffRole::Admin);
+        assert_eq!(config.delete_min_role, StaffRole::Owner);
     }
 
     #[test]
@@ -782,6 +798,22 @@ mod tests {
         .expect("account config");
 
         assert_eq!(config.password_mode, AccountPasswordMode::Md5);
+    }
+
+    #[test]
+    fn account_manage_config_can_be_enabled_and_relaxed() {
+        let config = AccountCommandsConfig::from_lookup(&lookup(&[
+            ("RATHENAFR_ACCOUNT_MANAGE_ENABLED", "true"),
+            ("RATHENAFR_ACCOUNT_DELETE_ENABLED", "true"),
+            ("RATHENAFR_ACCOUNT_MANAGE_MIN_ROLE", "gm"),
+            ("RATHENAFR_ACCOUNT_DELETE_MIN_ROLE", "admin"),
+        ]))
+        .expect("account config");
+
+        assert!(config.manage_enabled);
+        assert!(config.delete_enabled);
+        assert_eq!(config.manage_min_role, StaffRole::Gm);
+        assert_eq!(config.delete_min_role, StaffRole::Admin);
     }
 
     #[test]

@@ -13,7 +13,7 @@ pub(super) fn command_definitions() -> Vec<CreateCommand> {
 
 fn staff_command() -> CreateCommand {
     CreateCommand::new("staff")
-        .description("Commandes staff essentielles en lecture seule.")
+        .description("Commandes staff essentielles.")
         .add_option(
             subcommand("player", "Fiche complète d'un personnage.")
                 .add_sub_option(character_option()),
@@ -107,6 +107,7 @@ fn staff_command() -> CreateCommand {
             subcommand("banned", "Liste des comptes bannis ou bloqués.")
                 .add_sub_option(limit_option()),
         )
+        .add_option(account_manage_group())
 }
 
 fn mod_command() -> CreateCommand {
@@ -224,12 +225,81 @@ fn gmmsg_command() -> CreateCommand {
         )
 }
 
+fn account_manage_group() -> CreateCommandOption {
+    CreateCommandOption::new(
+        CommandOptionType::SubCommandGroup,
+        "account-manage",
+        "Gestion sensible des comptes rAthena.",
+    )
+    .add_sub_option(
+        subcommand("edit", "Modifier un champ sûr de login.")
+            .add_sub_option(account_lookup_option())
+            .add_sub_option(account_field_option())
+            .add_sub_option(text_option("value", "Nouvelle valeur."))
+            .add_sub_option(optional_text_option("reason", "Raison staff.")),
+    )
+    .add_sub_option(
+        subcommand("ban", "Bloquer ou bannir un compte.")
+            .add_sub_option(account_lookup_option())
+            .add_sub_option(optional_integer_option(
+                "until",
+                "Timestamp UNIX de fin de ban optionnel.",
+                0,
+            ))
+            .add_sub_option(optional_text_option("reason", "Raison staff.")),
+    )
+    .add_sub_option(
+        subcommand("unban", "Débloquer un compte.")
+            .add_sub_option(account_lookup_option())
+            .add_sub_option(optional_text_option("reason", "Raison staff.")),
+    )
+    .add_sub_option(
+        subcommand("delete", "Désactivation forte d'un compte.")
+            .add_sub_option(
+                CreateCommandOption::new(
+                    CommandOptionType::Integer,
+                    "account_id",
+                    "ID exact du compte.",
+                )
+                .min_int_value(1)
+                .required(true),
+            )
+            .add_sub_option(text_option("confirm", "Confirmation exacte : SUPPRIMER."))
+            .add_sub_option(optional_text_option("reason", "Raison staff.")),
+    )
+}
+
 fn subcommand(name: &str, description: &str) -> CreateCommandOption {
     CreateCommandOption::new(CommandOptionType::SubCommand, name, description)
 }
 
 fn text_option(name: &str, description: &str) -> CreateCommandOption {
     CreateCommandOption::new(CommandOptionType::String, name, description).required(true)
+}
+
+fn optional_text_option(name: &str, description: &str) -> CreateCommandOption {
+    CreateCommandOption::new(CommandOptionType::String, name, description).required(false)
+}
+
+fn optional_integer_option(name: &str, description: &str, min: u64) -> CreateCommandOption {
+    CreateCommandOption::new(CommandOptionType::Integer, name, description)
+        .min_int_value(min)
+        .required(false)
+}
+
+fn account_lookup_option() -> CreateCommandOption {
+    text_option("account", "account_id exact ou userid exact.")
+}
+
+fn account_field_option() -> CreateCommandOption {
+    CreateCommandOption::new(CommandOptionType::String, "field", "Champ sûr à modifier.")
+        .required(true)
+        .add_string_choice("group_id", "group_id")
+        .add_string_choice("state", "state")
+        .add_string_choice("unban_time", "unban_time")
+        .add_string_choice("expiration_time", "expiration_time")
+        .add_string_choice("logincount", "logincount")
+        .add_string_choice("sex", "sex")
 }
 
 fn character_option() -> CreateCommandOption {

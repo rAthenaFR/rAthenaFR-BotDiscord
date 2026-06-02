@@ -164,6 +164,29 @@ pub struct AccountStatus {
     pub lastlogin: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum AccountManageField {
+    GroupId,
+    State,
+    UnbanTime,
+    ExpirationTime,
+    Logincount,
+    Sex,
+}
+
+impl AccountManageField {
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::GroupId => "group_id",
+            Self::State => "state",
+            Self::UnbanTime => "unban_time",
+            Self::ExpirationTime => "expiration_time",
+            Self::Logincount => "logincount",
+            Self::Sex => "sex",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct CreatedAccount {
     pub account_id: i64,

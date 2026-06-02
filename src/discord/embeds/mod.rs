@@ -17,6 +17,12 @@ pub enum GmmsgLogStatus {
     Failed,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum AccountManageLogStatus {
+    Success,
+    Refused,
+}
+
 struct LimitedList {
     value: String,
     displayed_count: usize,
@@ -908,6 +914,62 @@ pub fn gmmsg_staff_log_embed(
         )
         .footer(serenity::all::CreateEmbedFooter::new(
             "rAthenaFR-BotDiscord • GMMSG",
+        ))
+        .timestamp(Timestamp::now())
+}
+
+pub fn account_manage_staff_log_embed(
+    status: AccountManageLogStatus,
+    discord_user_id: u64,
+    action: &str,
+    account: &str,
+    result: &str,
+    reason: Option<&str>,
+) -> CreateEmbed {
+    let (title, color, result_field) = match status {
+        AccountManageLogStatus::Success => ("Compte modifié", COLOR_SUCCESS, "Résultat"),
+        AccountManageLogStatus::Refused => {
+            ("Modification du compte refusée", COLOR_ERROR, "Erreur")
+        }
+    };
+
+    let mut embed = CreateEmbed::new()
+        .title(title)
+        .color(color)
+        .field(
+            "Utilisateur staff",
+            format!("ID : <@{}>", discord_user_id),
+            false,
+        )
+        .field(
+            "Action",
+            format!("`{}`", sanitize_embed_mentions(action)),
+            true,
+        )
+        .field(
+            "Compte",
+            truncate_embed_field(&sanitize_embed_mentions(account), EMBED_FIELD_VALUE_LIMIT),
+            true,
+        )
+        .field(
+            result_field,
+            truncate_embed_field(&sanitize_embed_mentions(result), EMBED_FIELD_VALUE_LIMIT),
+            false,
+        );
+
+    if status == AccountManageLogStatus::Success {
+        if let Some(reason) = reason.map(str::trim).filter(|value| !value.is_empty()) {
+            embed = embed.field(
+                "Raison",
+                truncate_embed_field(&sanitize_embed_mentions(reason), EMBED_FIELD_VALUE_LIMIT),
+                false,
+            );
+        }
+    }
+
+    embed
+        .footer(serenity::all::CreateEmbedFooter::new(
+            "rAthenaFR-BotDiscord • Account Manage",
         ))
         .timestamp(Timestamp::now())
 }

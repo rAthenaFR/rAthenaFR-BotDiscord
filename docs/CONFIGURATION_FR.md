@@ -101,15 +101,28 @@ Pour le détail complet, consulte [Bridge GMMSG SQL Queue](GMMSG_BRIDGE_FR.md).
 ```env
 RATHENAFR_ACCOUNT_CREATION_ENABLED=false
 RATHENAFR_ACCOUNT_PASSWORD_MODE=plain
+RATHENAFR_ACCOUNT_MANAGE_ENABLED=false
+RATHENAFR_ACCOUNT_DELETE_ENABLED=false
+RATHENAFR_ACCOUNT_MANAGE_MIN_ROLE=admin
+RATHENAFR_ACCOUNT_DELETE_MIN_ROLE=owner
 ```
 
 `/createaccount` est conservée et déclarée. Elle refuse la création tant que `RATHENAFR_ACCOUNT_CREATION_ENABLED=false`.
 
+`/staff account-manage` est déclarée mais refuse toute action tant que
+`RATHENAFR_ACCOUNT_MANAGE_ENABLED=false`. Les sous-commandes `edit`, `ban` et
+`unban` utilisent `RATHENAFR_ACCOUNT_MANAGE_MIN_ROLE`, avec `admin` par défaut.
+
+`delete` utilise `RATHENAFR_ACCOUNT_DELETE_MIN_ROLE`, avec `owner` par défaut,
+et reste refusée tant que `RATHENAFR_ACCOUNT_DELETE_ENABLED=false`.
+La commande demande aussi `confirm="SUPPRIMER"` exactement.
+
 > [!CAUTION]
 > **Écriture SQL**
 >
-> `/createaccount` est la seule commande conservée qui peut écrire en base.
-> Elle nécessite `INSERT` sur `login` uniquement si elle est activée.
+> `/createaccount` et `/staff account-manage` peuvent écrire en base uniquement
+> si elles sont activées explicitement. `account-manage delete` applique une
+> désactivation forte et ne supprime pas physiquement la ligne `login`.
 
 ## Base de données et services
 
@@ -127,7 +140,8 @@ RATHENAFR_CHAR_PORT=6121
 RATHENAFR_MAP_PORT=5121
 ```
 
-Les commandes SQL de cette version sont en lecture seule, sauf `/createaccount` si elle est activée.
+Les commandes SQL de cette version sont en lecture seule, sauf `/createaccount`
+et `/staff account-manage` si elles sont activées explicitement.
 
 ## Cache et logs runtime
 

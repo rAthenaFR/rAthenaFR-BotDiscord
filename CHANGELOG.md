@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.2
+
+### Ajouté
+
+- Ajout de `/staff account-manage` avec `edit`, `ban`, `unban` et `delete` en désactivation forte.
+- Ajout des variables `RATHENAFR_ACCOUNT_MANAGE_ENABLED`, `RATHENAFR_ACCOUNT_DELETE_ENABLED`, `RATHENAFR_ACCOUNT_MANAGE_MIN_ROLE` et `RATHENAFR_ACCOUNT_DELETE_MIN_ROLE`.
+- Ajout de la documentation staff de gestion de compte dans `docs/`.
+
+### Sécurité
+
+- `account-manage` est désactivée par défaut, répond en éphémère et journalise les actions dans le salon staff-log configuré.
+- `delete` exige `confirm="SUPPRIMER"` et ne supprime pas physiquement la ligne `login`.
+- Les secrets de compte restent exclus des réponses et des logs.
+
+### Corrigé
+
+- Correction du comptage des membres connectés de guilde via `guild_member` et `char`.`online`.
+- Correction des commandes `/mvp list`, `/mvp last` et `/mvp top` pour éviter les réponses vides et respecter la table mob configurée.
+
 ## 0.2.1
 
 ### Ajouté

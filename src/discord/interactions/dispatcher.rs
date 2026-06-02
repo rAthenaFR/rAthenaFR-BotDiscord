@@ -1,10 +1,10 @@
 use crate::cache::{BotCache, StatusCacheEntry, TimedCache};
-use crate::config::{AppConfig, GameBridgeMode, StaffRole, TopZenyMode};
+use crate::config::{AccountCommandsConfig, AppConfig, GameBridgeMode, StaffRole, TopZenyMode};
 use crate::discord::embeds;
 use crate::infra::observability::CommandTimer;
 use crate::rathenafr::{
-    check_services, BroadcastMode, DatabaseTable, GameBridge, MarketBuyEntry, MarketOverview,
-    MarketSellEntry, RAthenaFrDatabase,
+    check_services, AccountManageField, AccountStatus, BroadcastMode, DatabaseTable, GameBridge,
+    MarketBuyEntry, MarketOverview, MarketSellEntry, RAthenaFrDatabase,
 };
 use anyhow::Result;
 use serenity::all::{
@@ -56,12 +56,21 @@ const SELL_TABLES: &[DatabaseTable] = &[
     DatabaseTable::VendingItems,
     DatabaseTable::CartInventory,
 ];
+const ACCOUNT_MANAGE_TABLES: &[DatabaseTable] = &[DatabaseTable::Login, DatabaseTable::Char];
 
 pub struct BotState {
     pub config: Arc<AppConfig>,
     pub database: Arc<RAthenaFrDatabase>,
     pub game_bridge: GameBridge,
     pub cache: BotCache,
+}
+
+struct AccountManageLogEntry<'a> {
+    status: embeds::AccountManageLogStatus,
+    action: &'a str,
+    account: &'a str,
+    result: &'a str,
+    reason: Option<&'a str>,
 }
 
 pub async fn create_client(
@@ -693,6 +702,10 @@ impl Handler {
         command: &CommandInteraction,
     ) -> Result<()> {
         let subcommand = subcommand_name(command).unwrap_or("player");
+        if subcommand == "account-manage" {
+            return self.handle_staff_account_manage(context, command).await;
+        }
+
         let required_role = match subcommand {
             "player" | "account" | "chars" => StaffRole::Helper,
             "loginlog" | "ip-accounts" | "multiaccount" | "banned" => StaffRole::Admin,
@@ -1123,6 +1136,408 @@ impl Handler {
             context,
             command,
             embeds::account_characters_embed(account_id, &characters, display_limit),
+            true,
+        )
+        .await
+    }
+
+    async fn handle_staff_account_manage(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        let action = subcommand_leaf_name(command).unwrap_or("account-manage");
+        let requested_account = account_manage_requested_account(command);
+        let required_role =
+            account_manage_required_role(&self.state.config.account_commands, action);
+
+        if !self.has_staff_role(command, required_role) {
+            self.log_account_manage_action(
+                context,
+                command,
+                AccountManageLogEntry {
+                    status: embeds::AccountManageLogStatus::Refused,
+                    action,
+                    account: requested_account.as_deref().unwrap_or("non renseigne"),
+                    result: "Role Discord insuffisant.",
+                    reason: None,
+                },
+            )
+            .await;
+            return self
+                .respond_embed(context, command, embeds::staff_only_embed(), true)
+                .await;
+        }
+
+        if !self.state.config.account_commands.manage_enabled {
+            return self
+                .reject_account_manage(
+                    context,
+                    command,
+                    action,
+                    requested_account.as_deref().unwrap_or("non renseigne"),
+                    "La gestion des comptes est desactivee par configuration.",
+                )
+                .await;
+        }
+
+        if let Some(missing_table) = self
+            .state
+            .database
+            .first_missing_table(ACCOUNT_MANAGE_TABLES)
+            .await?
+        {
+            self.log_account_manage_action(
+                context,
+                command,
+                AccountManageLogEntry {
+                    status: embeds::AccountManageLogStatus::Refused,
+                    action,
+                    account: requested_account.as_deref().unwrap_or("non renseigne"),
+                    result: &format!("Table `{}` absente.", missing_table.name()),
+                    reason: None,
+                },
+            )
+            .await;
+            return self
+                .respond_embed(
+                    context,
+                    command,
+                    embeds::missing_database_table_embed(missing_table.name()),
+                    true,
+                )
+                .await;
+        }
+
+        match action {
+            "edit" => self.handle_account_manage_edit(context, command).await,
+            "ban" => self.handle_account_manage_ban(context, command).await,
+            "unban" => self.handle_account_manage_unban(context, command).await,
+            "delete" => self.handle_account_manage_delete(context, command).await,
+            _ => {
+                self.respond_error(
+                    context,
+                    command,
+                    "Sous-commande /staff account-manage inconnue.",
+                )
+                .await
+            }
+        }
+    }
+
+    async fn handle_account_manage_edit(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        let Some(account_lookup) = string_option(command, "account") else {
+            return self
+                .respond_error(context, command, "Option obligatoire manquante : account.")
+                .await;
+        };
+        let Some(field_name) = string_option(command, "field") else {
+            return self
+                .respond_error(context, command, "Option obligatoire manquante : field.")
+                .await;
+        };
+        let Some(value) = string_option(command, "value") else {
+            return self
+                .respond_error(context, command, "Option obligatoire manquante : value.")
+                .await;
+        };
+
+        let field = match parse_account_manage_field(field_name) {
+            Ok(field) => field,
+            Err(message) => {
+                return self
+                    .reject_account_manage(context, command, "edit", account_lookup, &message)
+                    .await;
+            }
+        };
+        let value = match validate_account_manage_value(field, value) {
+            Ok(value) => value,
+            Err(message) => {
+                return self
+                    .reject_account_manage(context, command, "edit", account_lookup, &message)
+                    .await;
+            }
+        };
+        let Some(account) = self.resolve_account_manage_lookup(account_lookup).await? else {
+            return self
+                .reject_account_manage(
+                    context,
+                    command,
+                    "edit",
+                    account_lookup,
+                    "Aucun compte exact n'a ete trouve.",
+                )
+                .await;
+        };
+
+        self.state
+            .database
+            .update_account_field(account.account_id, field, &value)
+            .await?;
+        let updated = self
+            .state
+            .database
+            .account_status(account.account_id)
+            .await?
+            .unwrap_or(account);
+        let reason = account_manage_reason(command);
+        let account_label = account_manage_account_label(&updated);
+        let result = format!(
+            "Champ `{}` modifie. {}",
+            field.name(),
+            account_manage_summary(&updated)
+        );
+
+        self.log_account_manage_action(
+            context,
+            command,
+            AccountManageLogEntry {
+                status: embeds::AccountManageLogStatus::Success,
+                action: "edit",
+                account: &account_label,
+                result: &result,
+                reason: reason.as_deref(),
+            },
+        )
+        .await;
+
+        self.respond_embed(
+            context,
+            command,
+            embeds::success_message_embed("Compte modifié", "Le compte a ete modifie.")
+                .field("Action", "`edit`", true)
+                .field("Compte", account_manage_summary(&updated), false)
+                .field("Champ", format!("`{}`", field.name()), true)
+                .field("Valeur", format!("`{}`", value), true),
+            true,
+        )
+        .await
+    }
+
+    async fn handle_account_manage_ban(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        let Some(account_lookup) = string_option(command, "account") else {
+            return self
+                .respond_error(context, command, "Option obligatoire manquante : account.")
+                .await;
+        };
+        let Some(account) = self.resolve_account_manage_lookup(account_lookup).await? else {
+            return self
+                .reject_account_manage(
+                    context,
+                    command,
+                    "ban",
+                    account_lookup,
+                    "Aucun compte exact n'a ete trouve.",
+                )
+                .await;
+        };
+
+        let until = non_negative_integer_option(command, "until");
+        self.state
+            .database
+            .ban_account(account.account_id, until)
+            .await?;
+        let updated = self
+            .state
+            .database
+            .account_status(account.account_id)
+            .await?
+            .unwrap_or(account);
+        let reason = account_manage_reason(command);
+        let account_label = account_manage_account_label(&updated);
+        let result = match until {
+            Some(value) if value > 0 => format!(
+                "Compte banni avec fin de ban `{value}`. {}",
+                account_manage_summary(&updated)
+            ),
+            _ => format!("Compte bloque. {}", account_manage_summary(&updated)),
+        };
+
+        self.log_account_manage_action(
+            context,
+            command,
+            AccountManageLogEntry {
+                status: embeds::AccountManageLogStatus::Success,
+                action: "ban",
+                account: &account_label,
+                result: &result,
+                reason: reason.as_deref(),
+            },
+        )
+        .await;
+
+        self.respond_embed(
+            context,
+            command,
+            embeds::success_message_embed("Compte modifié", "Le compte a ete bloque.")
+                .field("Action", "`ban`", true)
+                .field("Compte", account_manage_summary(&updated), false)
+                .field(
+                    "Fin de ban",
+                    until
+                        .map(|value| format!("`{value}`"))
+                        .unwrap_or_else(|| "`0`".to_string()),
+                    true,
+                ),
+            true,
+        )
+        .await
+    }
+
+    async fn handle_account_manage_unban(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        let Some(account_lookup) = string_option(command, "account") else {
+            return self
+                .respond_error(context, command, "Option obligatoire manquante : account.")
+                .await;
+        };
+        let Some(account) = self.resolve_account_manage_lookup(account_lookup).await? else {
+            return self
+                .reject_account_manage(
+                    context,
+                    command,
+                    "unban",
+                    account_lookup,
+                    "Aucun compte exact n'a ete trouve.",
+                )
+                .await;
+        };
+
+        self.state
+            .database
+            .unban_account(account.account_id)
+            .await?;
+        let updated = self
+            .state
+            .database
+            .account_status(account.account_id)
+            .await?
+            .unwrap_or(account);
+        let reason = account_manage_reason(command);
+        let account_label = account_manage_account_label(&updated);
+        let result = format!("Compte debloque. {}", account_manage_summary(&updated));
+
+        self.log_account_manage_action(
+            context,
+            command,
+            AccountManageLogEntry {
+                status: embeds::AccountManageLogStatus::Success,
+                action: "unban",
+                account: &account_label,
+                result: &result,
+                reason: reason.as_deref(),
+            },
+        )
+        .await;
+
+        self.respond_embed(
+            context,
+            command,
+            embeds::success_message_embed("Compte modifié", "Le compte a ete debloque.")
+                .field("Action", "`unban`", true)
+                .field("Compte", account_manage_summary(&updated), false),
+            true,
+        )
+        .await
+    }
+
+    async fn handle_account_manage_delete(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        let Some(account_id) = integer_option(command, "account_id").filter(|value| *value > 0)
+        else {
+            return self
+                .respond_error(
+                    context,
+                    command,
+                    "Option obligatoire manquante : account_id.",
+                )
+                .await;
+        };
+        let Some(confirm) = string_option(command, "confirm") else {
+            return self
+                .respond_error(context, command, "Option obligatoire manquante : confirm.")
+                .await;
+        };
+
+        if let Err(message) =
+            validate_account_delete_request(&self.state.config.account_commands, confirm)
+        {
+            return self
+                .reject_account_manage(context, command, "delete", &account_id.to_string(), message)
+                .await;
+        }
+
+        let Some(account) = self.state.database.account_status(account_id).await? else {
+            return self
+                .reject_account_manage(
+                    context,
+                    command,
+                    "delete",
+                    &account_id.to_string(),
+                    "Aucun compte avec cet account_id exact n'a ete trouve.",
+                )
+                .await;
+        };
+        let before_summary = account_manage_summary(&account);
+
+        self.state
+            .database
+            .strongly_disable_account(account.account_id)
+            .await?;
+        let updated = self
+            .state
+            .database
+            .account_status(account.account_id)
+            .await?
+            .unwrap_or(account);
+        let reason = account_manage_reason(command);
+        let account_label = account_manage_account_label(&updated);
+        let result = format!(
+            "Desactivation forte appliquee sans suppression physique. {}",
+            account_manage_summary(&updated)
+        );
+
+        self.log_account_manage_action(
+            context,
+            command,
+            AccountManageLogEntry {
+                status: embeds::AccountManageLogStatus::Success,
+                action: "delete",
+                account: &account_label,
+                result: &result,
+                reason: reason.as_deref(),
+            },
+        )
+        .await;
+
+        self.respond_embed(
+            context,
+            command,
+            embeds::success_message_embed(
+                "Compte modifié",
+                "Le compte a ete desactive fortement. Aucune ligne `login` n'a ete supprimee.",
+            )
+            .field("Action", "`delete` soft", true)
+            .field("Resume avant action", before_summary, false)
+            .field(
+                "Resume apres action",
+                account_manage_summary(&updated),
+                false,
+            ),
             true,
         )
         .await
@@ -1992,6 +2407,42 @@ impl Handler {
             .map(|item| item.item_id))
     }
 
+    async fn resolve_account_manage_lookup(&self, lookup: &str) -> Result<Option<AccountStatus>> {
+        match parse_account_lookup(lookup) {
+            Ok(AccountLookup::AccountId(account_id)) => {
+                self.state.database.account_status(account_id).await
+            }
+            Ok(AccountLookup::Userid(userid)) => {
+                self.state.database.account_status_by_userid(userid).await
+            }
+            Err(_) => Ok(None),
+        }
+    }
+
+    async fn reject_account_manage(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+        action: &str,
+        account: &str,
+        error: &str,
+    ) -> Result<()> {
+        self.log_account_manage_action(
+            context,
+            command,
+            AccountManageLogEntry {
+                status: embeds::AccountManageLogStatus::Refused,
+                action,
+                account,
+                result: error,
+                reason: None,
+            },
+        )
+        .await;
+
+        self.respond_error(context, command, error).await
+    }
+
     async fn log_staff_action(
         &self,
         context: &Context,
@@ -2024,6 +2475,44 @@ impl Handler {
             .await
         {
             error!(error = %error, "Impossible d’envoyer le log staff Discord.");
+        }
+    }
+
+    async fn log_account_manage_action(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+        entry: AccountManageLogEntry<'_>,
+    ) {
+        let Some(channel_id) = self.state.config.discord.staff_log_channel_id else {
+            info!(
+                user_id = command.user.id.get(),
+                action = entry.action,
+                account = entry.account,
+                result = entry.result,
+                "Action staff account-manage traitee."
+            );
+            return;
+        };
+
+        let embed = embeds::account_manage_staff_log_embed(
+            entry.status,
+            command.user.id.get(),
+            entry.action,
+            entry.account,
+            entry.result,
+            entry.reason,
+        );
+        if let Err(error) = ChannelId::new(channel_id)
+            .send_message(
+                &context.http,
+                CreateMessage::new()
+                    .embed(embed)
+                    .allowed_mentions(CreateAllowedMentions::new()),
+            )
+            .await
+        {
+            error!(error = %error, "Impossible d'envoyer le log staff Discord.");
         }
     }
 
@@ -2170,6 +2659,33 @@ fn subcommand_name(command: &CommandInteraction) -> Option<&str> {
         })
 }
 
+fn subcommand_leaf_name(command: &CommandInteraction) -> Option<&str> {
+    command
+        .data
+        .options
+        .iter()
+        .find_map(|option| match &option.value {
+            CommandDataOptionValue::SubCommand(options)
+            | CommandDataOptionValue::SubCommandGroup(options) => {
+                Some(deepest_subcommand_name(option.name.as_str(), options))
+            }
+            _ => None,
+        })
+}
+
+fn deepest_subcommand_name<'a>(current: &'a str, options: &'a [CommandDataOption]) -> &'a str {
+    options
+        .iter()
+        .find_map(|option| match &option.value {
+            CommandDataOptionValue::SubCommand(options)
+            | CommandDataOptionValue::SubCommandGroup(options) => {
+                Some(deepest_subcommand_name(option.name.as_str(), options))
+            }
+            _ => None,
+        })
+        .unwrap_or(current)
+}
+
 fn option_value<'a>(
     options: &'a [CommandDataOption],
     name: &str,
@@ -2209,6 +2725,142 @@ fn integer_option(command: &CommandInteraction, name: &str) -> Option<i64> {
         CommandDataOptionValue::Integer(value) => Some(*value),
         _ => None,
     })
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum AccountLookup<'a> {
+    AccountId(i64),
+    Userid(&'a str),
+}
+
+const FORBIDDEN_ACCOUNT_MANAGE_FIELDS: &[&str] = &[
+    "account_id",
+    "userid",
+    "user_pass",
+    "password",
+    "hash",
+    "email",
+    "pincode",
+    "last_ip",
+    "lastlogin",
+];
+
+fn account_manage_required_role(config: &AccountCommandsConfig, action: &str) -> StaffRole {
+    if action == "delete" {
+        config.delete_min_role
+    } else {
+        config.manage_min_role
+    }
+}
+
+fn account_manage_requested_account(command: &CommandInteraction) -> Option<String> {
+    integer_option(command, "account_id")
+        .map(|value| value.to_string())
+        .or_else(|| {
+            string_option(command, "account")
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned)
+        })
+}
+
+fn account_manage_reason(command: &CommandInteraction) -> Option<String> {
+    string_option(command, "reason")
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn parse_account_lookup(value: &str) -> std::result::Result<AccountLookup<'_>, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err("Le compte doit etre renseigne.".to_string());
+    }
+
+    match trimmed.parse::<i64>() {
+        Ok(account_id) if account_id > 0 => Ok(AccountLookup::AccountId(account_id)),
+        Ok(_) => Err("L'account_id doit etre strictement positif.".to_string()),
+        Err(_) => Ok(AccountLookup::Userid(trimmed)),
+    }
+}
+
+fn parse_account_manage_field(value: &str) -> std::result::Result<AccountManageField, String> {
+    let normalized = value.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "group_id" => Ok(AccountManageField::GroupId),
+        "state" => Ok(AccountManageField::State),
+        "unban_time" => Ok(AccountManageField::UnbanTime),
+        "expiration_time" => Ok(AccountManageField::ExpirationTime),
+        "logincount" => Ok(AccountManageField::Logincount),
+        "sex" => Ok(AccountManageField::Sex),
+        field if FORBIDDEN_ACCOUNT_MANAGE_FIELDS.contains(&field) => Err(format!(
+            "Le champ `{field}` ne peut jamais etre modifie par cette commande."
+        )),
+        field => Err(format!("Le champ `{field}` n'est pas autorise.")),
+    }
+}
+
+fn validate_account_manage_value(
+    field: AccountManageField,
+    value: &str,
+) -> std::result::Result<String, String> {
+    if field == AccountManageField::Sex {
+        return validate_account_sex(value);
+    }
+
+    let trimmed = value.trim();
+    let parsed = trimmed
+        .parse::<i64>()
+        .map_err(|_| format!("La valeur de `{}` doit etre un entier.", field.name()))?;
+    if parsed < 0 {
+        return Err(format!(
+            "La valeur de `{}` doit etre positive ou nulle.",
+            field.name()
+        ));
+    }
+
+    Ok(parsed.to_string())
+}
+
+fn validate_account_delete_request(
+    config: &AccountCommandsConfig,
+    confirm: &str,
+) -> std::result::Result<(), &'static str> {
+    if !config.delete_enabled {
+        return Err("La desactivation forte de compte est desactivee par configuration.");
+    }
+    if confirm != "SUPPRIMER" {
+        return Err("Confirmation invalide. Renseigne `SUPPRIMER` exactement.");
+    }
+
+    Ok(())
+}
+
+fn account_manage_account_label(status: &AccountStatus) -> String {
+    format!(
+        "account_id `{}` / userid `{}`",
+        status.account_id,
+        sanitize_staff_text(&status.userid)
+    )
+}
+
+fn account_manage_summary(status: &AccountStatus) -> String {
+    format!(
+        "account_id `{}` | userid `{}` | personnages `{}` | etat `{}` | group_id `{}` | unban_time `{}` | expiration_time `{}`",
+        status.account_id,
+        sanitize_staff_text(&status.userid),
+        status.characters,
+        status.state,
+        status.group_id,
+        status.unban_time,
+        status.expiration_time
+    )
+}
+
+fn sanitize_staff_text(value: &str) -> String {
+    value
+        .replace("@everyone", "@\u{200B}everyone")
+        .replace("@here", "@\u{200B}here")
 }
 
 struct ConfiguredRoles<'a> {
@@ -2481,6 +3133,116 @@ mod tests {
         assert!(test_staff_role(&[10], &[10], &[], &[]));
         assert!(test_staff_role(&[30], &[], &[30], &[]));
         assert!(test_staff_role(&[40], &[], &[], &[40]));
+    }
+
+    #[test]
+    fn account_manage_permission_requires_configured_role() {
+        let gm_roles = [30];
+        let admin_roles = [40];
+        let owner_roles = [50];
+        let has_role = |member_role_ids: &[u64], minimum_role| {
+            has_configured_role(
+                member_role_ids,
+                minimum_role,
+                ConfiguredRoles {
+                    helper: &[],
+                    moderator: &[],
+                    gm: &gm_roles,
+                    legacy_staff: &[],
+                    admin: &admin_roles,
+                    owner: &owner_roles,
+                },
+            )
+        };
+
+        assert!(!has_role(&gm_roles, StaffRole::Admin));
+        assert!(has_role(&admin_roles, StaffRole::Admin));
+        assert!(has_role(&owner_roles, StaffRole::Admin));
+
+        let config = test_account_commands_config(StaffRole::Gm, StaffRole::Owner, false);
+        assert_eq!(account_manage_required_role(&config, "ban"), StaffRole::Gm);
+        assert_eq!(
+            account_manage_required_role(&config, "unban"),
+            StaffRole::Gm
+        );
+        assert_eq!(
+            account_manage_required_role(&config, "delete"),
+            StaffRole::Owner
+        );
+    }
+
+    #[test]
+    fn account_delete_is_disabled_by_config_until_explicitly_enabled() {
+        let disabled = test_account_commands_config(StaffRole::Admin, StaffRole::Owner, false);
+        let enabled = test_account_commands_config(StaffRole::Admin, StaffRole::Owner, true);
+
+        assert_eq!(
+            validate_account_delete_request(&disabled, "SUPPRIMER").unwrap_err(),
+            "La desactivation forte de compte est desactivee par configuration."
+        );
+        assert!(validate_account_delete_request(&enabled, "SUPPRIMER").is_ok());
+    }
+
+    #[test]
+    fn account_delete_confirmation_is_strict() {
+        let config = test_account_commands_config(StaffRole::Admin, StaffRole::Owner, true);
+
+        assert!(validate_account_delete_request(&config, "SUPPRIMER").is_ok());
+        assert_eq!(
+            validate_account_delete_request(&config, "supprimer").unwrap_err(),
+            "Confirmation invalide. Renseigne `SUPPRIMER` exactement."
+        );
+        assert!(validate_account_delete_request(&config, " SUPPRIMER ").is_err());
+    }
+
+    #[test]
+    fn account_manage_ban_unban_lookup_accepts_account_id() {
+        assert_eq!(
+            parse_account_lookup(" 123 ").unwrap(),
+            AccountLookup::AccountId(123)
+        );
+        assert_eq!(
+            parse_account_lookup("ExactUserid").unwrap(),
+            AccountLookup::Userid("ExactUserid")
+        );
+        assert!(parse_account_lookup("0").is_err());
+    }
+
+    #[test]
+    fn account_manage_rejects_forbidden_or_invalid_fields() {
+        assert_eq!(
+            parse_account_manage_field("group_id").unwrap(),
+            AccountManageField::GroupId
+        );
+        assert!(parse_account_manage_field("user_pass").is_err());
+        assert!(parse_account_manage_field("email").is_err());
+        assert!(parse_account_manage_field("last_ip").is_err());
+        assert!(validate_account_manage_value(AccountManageField::State, "-1").is_err());
+        assert_eq!(
+            validate_account_manage_value(AccountManageField::Sex, " f ").unwrap(),
+            "F"
+        );
+    }
+
+    #[test]
+    fn account_manage_checks_login_and_char_tables() {
+        assert!(ACCOUNT_MANAGE_TABLES.contains(&DatabaseTable::Login));
+        assert!(ACCOUNT_MANAGE_TABLES.contains(&DatabaseTable::Char));
+    }
+
+    fn test_account_commands_config(
+        manage_min_role: StaffRole,
+        delete_min_role: StaffRole,
+        delete_enabled: bool,
+    ) -> AccountCommandsConfig {
+        AccountCommandsConfig {
+            creation_enabled: false,
+            password_mode: crate::config::AccountPasswordMode::Plain,
+            manage_enabled: true,
+            delete_enabled,
+            manage_min_role,
+            delete_min_role,
+        }
     }
 
     fn test_staff_role(

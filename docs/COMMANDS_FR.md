@@ -70,6 +70,15 @@ Les commandes staff répondent en éphémère lorsqu’elles affichent des donn�
 | `/staff ip-accounts character:` | Admin | Contexte `loginlog` avec IP masquées. |
 | `/staff multiaccount character:` | Admin | Contexte multi-compte depuis `loginlog`. |
 | `/staff banned` | Admin | Comptes bannis ou bloqués. |
+| `/staff account-manage edit account: field: value: reason:` | Admin par défaut | Modifie uniquement un champ sûr de `login`, si la commande est activée. |
+| `/staff account-manage ban account: until: reason:` | Admin par défaut | Bloque un compte par `account_id` ou `userid` exact. |
+| `/staff account-manage unban account: reason:` | Admin par défaut | Débloque un compte par `account_id` ou `userid` exact. |
+| `/staff account-manage delete account_id: confirm: reason:` | Owner par défaut | Désactivation forte sans suppression physique ; `confirm` doit être `SUPPRIMER`. |
+
+`/staff account-manage` est désactivée par défaut avec
+`RATHENAFR_ACCOUNT_MANAGE_ENABLED=false`. `delete` a sa propre configuration
+`RATHENAFR_ACCOUNT_DELETE_ENABLED=false` et reste une désactivation forte du
+compte, pas une suppression SQL physique.
 
 ## Modération, debug, audit et base de données
 
