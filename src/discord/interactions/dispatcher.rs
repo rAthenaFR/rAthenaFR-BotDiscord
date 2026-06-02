@@ -553,7 +553,7 @@ impl Handler {
                 let lines = self
                     .state
                     .database
-                    .recent_log_lines("mvplog", query_limit)
+                    .mvp_last_lines(&self.state.config.commands.mob_table_name, query_limit)
                     .await?;
                 self.respond_lines(context, command, "Derniers MVP", lines, false)
                     .await
@@ -562,7 +562,7 @@ impl Handler {
                 let lines = self
                     .state
                     .database
-                    .recent_log_lines("mvplog", query_limit)
+                    .mvp_top_lines(&self.state.config.commands.mob_table_name, query_limit)
                     .await?;
                 self.respond_lines(context, command, "Top MVP", lines, false)
                     .await

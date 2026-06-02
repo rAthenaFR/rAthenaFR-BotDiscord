@@ -234,7 +234,17 @@ const ITEM_DETAIL_SLOTS_COLUMNS: &[&str] = &["slots", "slot"];
 const MOB_RACE_COLUMNS: &[&str] = &["race", "Race"];
 const MOB_ELEMENT_COLUMNS: &[&str] = &["element", "Element"];
 const MOB_SIZE_COLUMNS: &[&str] = &["scale", "size", "Scale"];
-const MOB_MVP_EXP_COLUMNS: &[&str] = &["mexp", "MEXP", "mvp_exp", "MvpExp"];
+const MOB_MVP_EXP_COLUMNS: &[&str] = &["mvp_exp", "mvpexp", "mexp"];
+const MVP_LOG_EMPTY_MESSAGE: &str = "Aucun MVP n’a encore été enregistré dans les logs.";
+const MOB_TABLE_MISSING_MESSAGE: &str = "La table des monstres est absente ou non configurée.";
+const MVP_LOG_KILLER_ID_COLUMNS: &[&str] =
+    &["kill_char_id", "killer_char_id", "char_id", "src_charid"];
+const MVP_LOG_KILLER_NAME_COLUMNS: &[&str] = &["killer_name", "char_name", "name"];
+const MVP_LOG_MONSTER_ID_COLUMNS: &[&str] = &["monster_id", "mob_id"];
+const MVP_LOG_DATE_COLUMNS: &[&str] = &["mvp_date", "time", "date", "logtime", "atcommand_date"];
+const MVP_LOG_MAP_COLUMNS: &[&str] = &["map", "mapname", "last_map"];
+const MVP_LOG_EXP_COLUMNS: &[&str] = &["mvp_exp", "mvpexp", "mexp"];
+const MVP_LOG_PRIZE_COLUMNS: &[&str] = &["prize", "item_id", "drop_id"];
 
 #[derive(Debug, Clone)]
 struct AvailableColumns {
@@ -288,12 +298,46 @@ struct MonsterSearchColumns {
     searchable_names: Vec<String>,
 }
 
+#[derive(Debug, Clone)]
+struct MvpLogColumns {
+    killer_id: Option<String>,
+    killer_name: Option<String>,
+    monster_id: Option<String>,
+    date: Option<String>,
+    map: Option<String>,
+    exp: Option<String>,
+    prize: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct MvpMobJoin {
+    table_name: String,
+    mob_id_column: String,
+    monster_id_column: String,
+    display_name_column: String,
+}
+
 fn cast_column_as_char(column_name: &str) -> String {
     format!("CAST({} AS CHAR)", quote_identifier(column_name))
 }
 
 fn cast_column_as_signed(column_name: &str) -> String {
     format!("CAST({} AS SIGNED)", quote_identifier(column_name))
+}
+
+fn qualified_column(table_ref: &str, column_name: &str) -> String {
+    format!("{}.{}", table_ref, quote_identifier(column_name))
+}
+
+fn cast_qualified_column_as_char(table_ref: &str, column_name: &str) -> String {
+    format!("CAST({} AS CHAR)", qualified_column(table_ref, column_name))
+}
+
+fn cast_qualified_column_as_signed(table_ref: &str, column_name: &str) -> String {
+    format!(
+        "CAST({} AS SIGNED)",
+        qualified_column(table_ref, column_name)
+    )
 }
 
 fn exact_conditions(column_names: &[String]) -> String {
@@ -336,6 +380,23 @@ fn optional_char_select(columns: &AvailableColumns, candidates: &[&str], alias: 
         .unwrap_or_else(|| format!("NULL AS {alias}"))
 }
 
+fn optional_qualified_char_select(column: Option<&String>, alias: &str) -> String {
+    column
+        .map(|column| format!("{} AS {alias}", cast_qualified_column_as_char("ml", column)))
+        .unwrap_or_else(|| format!("NULL AS {alias}"))
+}
+
+fn optional_qualified_signed_select(column: Option<&String>, alias: &str) -> String {
+    column
+        .map(|column| {
+            format!(
+                "{} AS {alias}",
+                cast_qualified_column_as_signed("ml", column)
+            )
+        })
+        .unwrap_or_else(|| format!("NULL AS {alias}"))
+}
+
 fn find_column_dynamic(columns: &AvailableColumns, candidates: &[String]) -> Option<String> {
     candidates.iter().find_map(|candidate| {
         columns
@@ -344,6 +405,95 @@ fn find_column_dynamic(columns: &AvailableColumns, candidates: &[String]) -> Opt
             .find(|name| name.eq_ignore_ascii_case(candidate))
             .cloned()
     })
+}
+
+fn mvp_drop_id_columns(columns: &AvailableColumns) -> Vec<String> {
+    let mut matches = Vec::new();
+
+    for index in 1..=3 {
+        let id_candidates = vec![
+            format!("MvpDrop{index}id"),
+            format!("MVPDrop{index}id"),
+            format!("MvpDrop{index}ID"),
+            format!("mvpdrop{index}id"),
+            format!("mvp_drop{index}_id"),
+        ];
+
+        if let Some(id_column) = find_column_dynamic(columns, &id_candidates) {
+            matches.push(id_column);
+        }
+    }
+
+    matches
+}
+
+fn mvp_log_columns(columns: &AvailableColumns) -> MvpLogColumns {
+    MvpLogColumns {
+        killer_id: columns.first(MVP_LOG_KILLER_ID_COLUMNS),
+        killer_name: columns.first(MVP_LOG_KILLER_NAME_COLUMNS),
+        monster_id: columns.first(MVP_LOG_MONSTER_ID_COLUMNS),
+        date: columns.first(MVP_LOG_DATE_COLUMNS),
+        map: columns.first(MVP_LOG_MAP_COLUMNS),
+        exp: columns.first(MVP_LOG_EXP_COLUMNS),
+        prize: columns.first(MVP_LOG_PRIZE_COLUMNS),
+    }
+}
+
+fn mvp_killer_name_expression(columns: &MvpLogColumns, can_join_char: bool) -> String {
+    let fallback_from_log_name = columns
+        .killer_name
+        .as_ref()
+        .map(|column| {
+            format!(
+                "NULLIF({}, '')",
+                cast_qualified_column_as_char("ml", column)
+            )
+        })
+        .unwrap_or_else(|| "NULL".to_string());
+
+    let fallback_from_id = columns
+        .killer_id
+        .as_ref()
+        .map(|column| {
+            format!(
+                "CONCAT('Personnage #', {})",
+                cast_qualified_column_as_char("ml", column)
+            )
+        })
+        .unwrap_or_else(|| "NULL".to_string());
+
+    if can_join_char {
+        format!(
+            "COALESCE(NULLIF(`char`.`name`, ''), {fallback_from_log_name}, {fallback_from_id}, 'Tueur inconnu')"
+        )
+    } else {
+        format!("COALESCE({fallback_from_log_name}, {fallback_from_id}, 'Tueur inconnu')")
+    }
+}
+
+fn mvp_monster_name_expression(mob_join: Option<&MvpMobJoin>) -> String {
+    mob_join
+        .map(|join| {
+            format!(
+                "COALESCE(NULLIF({}, ''), CONCAT('MVP #', {}))",
+                cast_qualified_column_as_char("m", &join.display_name_column),
+                cast_qualified_column_as_char("ml", &join.monster_id_column)
+            )
+        })
+        .unwrap_or_else(|| "NULL".to_string())
+}
+
+fn mvp_date_order_clause(columns: &MvpLogColumns) -> String {
+    columns
+        .date
+        .as_ref()
+        .map(|column| {
+            format!(
+                "ORDER BY {} DESC",
+                cast_qualified_column_as_char("ml", column)
+            )
+        })
+        .unwrap_or_else(|| "ORDER BY 1 DESC".to_string())
 }
 
 fn drop_column_pairs(columns: &AvailableColumns) -> Vec<(String, Option<String>, String)> {
@@ -435,6 +585,51 @@ fn join_limited_lines(lines: Vec<String>, empty_message: &str) -> Vec<String> {
     } else {
         lines
     }
+}
+
+fn format_mvp_log_line(row: &MySqlRow) -> Result<String> {
+    let date = row
+        .try_get::<Option<String>, _>("mvp_date")?
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "date inconnue".to_string());
+    let killer = row
+        .try_get::<Option<String>, _>("killer_name")?
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "Tueur inconnu".to_string());
+    let monster_id = row.try_get::<Option<i64>, _>("monster_id")?;
+    let monster_name = row
+        .try_get::<Option<String>, _>("monster_name")?
+        .filter(|value| !value.trim().is_empty());
+    let monster = match (monster_name, monster_id) {
+        (Some(name), Some(id)) => format!("**{}** (`{}`)", name, id),
+        (Some(name), None) => format!("**{}**", name),
+        (None, Some(id)) => format!("MVP `{id}`"),
+        (None, None) => "MVP inconnu".to_string(),
+    };
+    let map = row
+        .try_get::<Option<String>, _>("map_name")?
+        .filter(|value| !value.trim().is_empty());
+    let mvp_exp = row.try_get::<Option<i64>, _>("mvp_exp")?;
+    let prize = row.try_get::<Option<i64>, _>("prize")?;
+
+    let mut details = Vec::new();
+    if let Some(map) = map {
+        details.push(format!("carte `{map}`"));
+    }
+    if let Some(mvp_exp) = mvp_exp.filter(|value| *value > 0) {
+        details.push(format!("EXP MVP `{mvp_exp}`"));
+    }
+    if let Some(prize) = prize.filter(|value| *value > 0) {
+        details.push(format!("prix `{prize}`"));
+    }
+
+    let suffix = if details.is_empty() {
+        String::new()
+    } else {
+        format!(" - {}", details.join(" - "))
+    };
+
+    Ok(format!("`{date}` - **{killer}** a tué {monster}{suffix}"))
 }
 
 fn item_search_entry_from_row(row: MySqlRow) -> Result<ItemSearchEntry> {
@@ -628,6 +823,29 @@ impl RAthenaFrDatabase {
             level: columns.first(MONSTER_LEVEL_COLUMN_CANDIDATES),
             hp: columns.first(MONSTER_HP_COLUMN_CANDIDATES),
             searchable_names: columns.all(MONSTER_DISPLAY_COLUMN_CANDIDATES),
+        }))
+    }
+
+    async fn configured_mob_join(
+        &self,
+        preferred_table: &str,
+        monster_id_column: Option<&String>,
+    ) -> Result<Option<MvpMobJoin>> {
+        let Some(monster_id_column) = monster_id_column else {
+            return Ok(None);
+        };
+        if !self.table_exists(preferred_table).await? {
+            return Ok(None);
+        }
+        let Some(columns) = self.monster_search_columns(preferred_table).await? else {
+            return Ok(None);
+        };
+
+        Ok(Some(MvpMobJoin {
+            table_name: preferred_table.to_string(),
+            mob_id_column: columns.id,
+            monster_id_column: monster_id_column.clone(),
+            display_name_column: columns.display_name,
         }))
     }
 
@@ -2527,29 +2745,20 @@ impl RAthenaFrDatabase {
     }
 
     pub async fn mvp_list_lines(&self, preferred_table: &str, limit: u32) -> Result<Vec<String>> {
-        let mut table_name = preferred_table.to_string();
-        if !self.table_exists(&table_name).await? {
-            for candidate in MOB_SEARCH_TABLES {
-                if self.table_exists(candidate).await? {
-                    table_name = (*candidate).to_string();
-                    break;
-                }
-            }
+        if !self.table_exists(preferred_table).await? {
+            return Ok(vec![MOB_TABLE_MISSING_MESSAGE.to_string()]);
         }
-        if !self.table_exists(&table_name).await? {
-            return Ok(vec![format!("Table monstres `{table_name}` absente.")]);
-        }
-        let Some(search_columns) = self.monster_search_columns(&table_name).await? else {
-            return Ok(vec![format!(
-                "Aucune colonne monstre lisible dans `{table_name}`."
-            )]);
+        let Some(search_columns) = self.monster_search_columns(preferred_table).await? else {
+            return Ok(vec![MOB_TABLE_MISSING_MESSAGE.to_string()]);
         };
-        let Some(columns) = self.table_columns(&table_name).await? else {
-            return Ok(vec![format!("Table monstres `{table_name}` absente.")]);
+        let Some(columns) = self.table_columns(preferred_table).await? else {
+            return Ok(vec![MOB_TABLE_MISSING_MESSAGE.to_string()]);
         };
-        let Some(mvp_exp_column) = columns.first(MOB_MVP_EXP_COLUMNS) else {
+        let mvp_exp_column = columns.first(MOB_MVP_EXP_COLUMNS);
+        let mvp_drop_columns = mvp_drop_id_columns(&columns);
+        if mvp_exp_column.is_none() && mvp_drop_columns.is_empty() {
             return Ok(vec![format!(
-                "Aucune colonne MVP détectée dans `{table_name}`."
+                "Aucune colonne MVP détectée dans `{preferred_table}`."
             )]);
         };
         let level_expression = search_columns
@@ -2562,6 +2771,28 @@ impl RAthenaFrDatabase {
             .as_deref()
             .map(cast_column_as_signed)
             .unwrap_or_else(|| "NULL".to_string());
+        let mvp_exp_expression = mvp_exp_column
+            .as_deref()
+            .map(cast_column_as_signed)
+            .unwrap_or_else(|| "NULL".to_string());
+        let where_clause = if let Some(mvp_exp_column) = mvp_exp_column.as_deref() {
+            format!("{} > 0", cast_column_as_signed(mvp_exp_column))
+        } else {
+            mvp_drop_columns
+                .iter()
+                .map(|column| format!("{} > 0", cast_column_as_signed(column)))
+                .collect::<Vec<_>>()
+                .join(" OR ")
+        };
+        let order_clause = if let Some(mvp_exp_column) = mvp_exp_column.as_deref() {
+            format!(
+                "{} DESC, {} ASC",
+                cast_column_as_signed(mvp_exp_column),
+                quote_identifier(&search_columns.id)
+            )
+        } else {
+            format!("{} ASC", quote_identifier(&search_columns.id))
+        };
         let sql = format!(
             r#"
             SELECT
@@ -2571,19 +2802,16 @@ impl RAthenaFrDatabase {
                 {} AS monster_hp,
                 {} AS mvp_exp
             FROM {}
-            WHERE {} > 0
-            ORDER BY {} DESC, {} ASC
+            WHERE {where_clause}
+            ORDER BY {order_clause}
             LIMIT ?
             "#,
             cast_column_as_signed(&search_columns.id),
             cast_column_as_char(&search_columns.display_name),
             level_expression,
             hp_expression,
-            cast_column_as_signed(&mvp_exp_column),
-            quote_identifier(&table_name),
-            cast_column_as_signed(&mvp_exp_column),
-            quote_identifier(&mvp_exp_column),
-            quote_identifier(&search_columns.id),
+            mvp_exp_expression,
+            quote_identifier(preferred_table),
         );
         let rows = sqlx::query(&sql)
             .bind(limit)
@@ -2605,14 +2833,177 @@ impl RAthenaFrDatabase {
                         .ok()
                         .flatten();
                     let hp = row.try_get::<Option<i64>, _>("monster_hp").ok().flatten();
-                    format!(
+                    let mvp_exp = row.try_get::<Option<i64>, _>("mvp_exp").ok().flatten();
+                    let mut line = format!(
                         "`{id}` - {name} - niveau `{}` - HP `{}`",
                         level.unwrap_or_default(),
                         hp.unwrap_or_default()
-                    )
+                    );
+                    if let Some(mvp_exp) = mvp_exp.filter(|value| *value > 0) {
+                        line.push_str(&format!(" - EXP MVP `{mvp_exp}`"));
+                    }
+                    line
                 })
                 .collect(),
             "Aucun MVP n’a été trouvé.",
+        ))
+    }
+
+    pub async fn mvp_last_lines(
+        &self,
+        preferred_mob_table: &str,
+        limit: u32,
+    ) -> Result<Vec<String>> {
+        if !self.table_exists("mvplog").await? {
+            return Ok(vec!["Table `mvplog` absente.".to_string()]);
+        }
+        let Some(columns) = self.table_columns("mvplog").await? else {
+            return Ok(vec!["Table `mvplog` absente.".to_string()]);
+        };
+        let log_columns = mvp_log_columns(&columns);
+        let can_join_char = log_columns.killer_id.is_some() && self.table_exists("char").await?;
+        let mob_join = self
+            .configured_mob_join(preferred_mob_table, log_columns.monster_id.as_ref())
+            .await?;
+        let char_join = if can_join_char {
+            let killer_id_column = log_columns.killer_id.as_deref().unwrap_or_default();
+            format!(
+                "LEFT JOIN `char` ON `char`.`char_id` = {}",
+                cast_qualified_column_as_signed("ml", killer_id_column)
+            )
+        } else {
+            String::new()
+        };
+        let mob_join_clause = mob_join
+            .as_ref()
+            .map(|join| {
+                format!(
+                    "LEFT JOIN {} m ON {} = {}",
+                    quote_identifier(&join.table_name),
+                    cast_qualified_column_as_signed("m", &join.mob_id_column),
+                    cast_qualified_column_as_signed("ml", &join.monster_id_column)
+                )
+            })
+            .unwrap_or_default();
+        let killer_name_expression = mvp_killer_name_expression(&log_columns, can_join_char);
+        let monster_name_expression = mvp_monster_name_expression(mob_join.as_ref());
+        let order_clause = mvp_date_order_clause(&log_columns);
+        let sql = format!(
+            r#"
+            SELECT
+                {},
+                {} AS killer_name,
+                {},
+                {} AS monster_name,
+                {},
+                {},
+                {}
+            FROM `mvplog` ml
+            {char_join}
+            {mob_join_clause}
+            {order_clause}
+            LIMIT ?
+            "#,
+            optional_qualified_char_select(log_columns.date.as_ref(), "mvp_date"),
+            killer_name_expression,
+            optional_qualified_signed_select(log_columns.monster_id.as_ref(), "monster_id"),
+            monster_name_expression,
+            optional_qualified_char_select(log_columns.map.as_ref(), "map_name"),
+            optional_qualified_signed_select(log_columns.exp.as_ref(), "mvp_exp"),
+            optional_qualified_signed_select(log_columns.prize.as_ref(), "prize"),
+        );
+        let rows = sqlx::query(&sql)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await
+            .context("récupération des derniers MVP")?;
+
+        Ok(join_limited_lines(
+            rows.into_iter()
+                .map(|row| format_mvp_log_line(&row))
+                .collect::<Result<Vec<_>>>()?,
+            MVP_LOG_EMPTY_MESSAGE,
+        ))
+    }
+
+    pub async fn mvp_top_lines(
+        &self,
+        _preferred_mob_table: &str,
+        limit: u32,
+    ) -> Result<Vec<String>> {
+        if !self.table_exists("mvplog").await? {
+            return Ok(vec!["Table `mvplog` absente.".to_string()]);
+        }
+        let Some(columns) = self.table_columns("mvplog").await? else {
+            return Ok(vec!["Table `mvplog` absente.".to_string()]);
+        };
+        let log_columns = mvp_log_columns(&columns);
+        let can_join_char = log_columns.killer_id.is_some() && self.table_exists("char").await?;
+        let char_join = if can_join_char {
+            let killer_id_column = log_columns.killer_id.as_deref().unwrap_or_default();
+            format!(
+                "LEFT JOIN `char` ON `char`.`char_id` = {}",
+                cast_qualified_column_as_signed("ml", killer_id_column)
+            )
+        } else {
+            String::new()
+        };
+        let killer_name_expression = mvp_killer_name_expression(&log_columns, can_join_char);
+        let last_date_select = log_columns
+            .date
+            .as_ref()
+            .map(|column| {
+                format!(
+                    "MAX({}) AS last_mvp_date",
+                    cast_qualified_column_as_char("ml", column)
+                )
+            })
+            .unwrap_or_else(|| "NULL AS last_mvp_date".to_string());
+        let sql = format!(
+            r#"
+            SELECT
+                {} AS killer_name,
+                CAST(COUNT(*) AS SIGNED) AS kill_count,
+                {last_date_select}
+            FROM `mvplog` ml
+            {char_join}
+            GROUP BY killer_name
+            ORDER BY kill_count DESC, killer_name ASC
+            LIMIT ?
+            "#,
+            killer_name_expression,
+        );
+        let rows = sqlx::query(&sql)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await
+            .context("récupération du top MVP")?;
+
+        Ok(join_limited_lines(
+            rows.into_iter()
+                .enumerate()
+                .map(|(index, row)| {
+                    let killer = row
+                        .try_get::<Option<String>, _>("killer_name")?
+                        .filter(|value| !value.trim().is_empty())
+                        .unwrap_or_else(|| "Tueur inconnu".to_string());
+                    let count = row.try_get::<i64, _>("kill_count")?;
+                    let last_date = row
+                        .try_get::<Option<String>, _>("last_mvp_date")?
+                        .filter(|value| !value.trim().is_empty());
+                    let suffix = last_date
+                        .map(|value| format!(" - dernier `{value}`"))
+                        .unwrap_or_default();
+                    Ok(format!(
+                        "`{:>2}.` **{}** - `{}` MVP{}",
+                        index + 1,
+                        killer,
+                        count,
+                        suffix
+                    ))
+                })
+                .collect::<Result<Vec<_>>>()?,
+            MVP_LOG_EMPTY_MESSAGE,
         ))
     }
 
@@ -3247,6 +3638,63 @@ mod tests {
             assert!(!sql.contains("connect_member"));
             assert!(!sql.contains("c.guild_id"));
         }
+    }
+
+    #[test]
+    fn mvp_detection_prefers_configured_mvp_exp_columns() {
+        let columns = AvailableColumns {
+            names: vec![
+                "id".to_string(),
+                "MEXP".to_string(),
+                "mvp_exp".to_string(),
+                "MvpDrop1id".to_string(),
+            ],
+        };
+
+        assert_eq!(
+            columns.first(MOB_MVP_EXP_COLUMNS).as_deref(),
+            Some("mvp_exp")
+        );
+        assert_eq!(mvp_drop_id_columns(&columns), vec!["MvpDrop1id"]);
+    }
+
+    #[test]
+    fn mvp_log_columns_detect_common_rathena_schema() {
+        let columns = AvailableColumns {
+            names: vec![
+                "mvp_date".to_string(),
+                "kill_char_id".to_string(),
+                "monster_id".to_string(),
+                "mvpexp".to_string(),
+                "map".to_string(),
+                "prize".to_string(),
+            ],
+        };
+        let detected = mvp_log_columns(&columns);
+
+        assert_eq!(detected.date.as_deref(), Some("mvp_date"));
+        assert_eq!(detected.killer_id.as_deref(), Some("kill_char_id"));
+        assert_eq!(detected.monster_id.as_deref(), Some("monster_id"));
+        assert_eq!(detected.exp.as_deref(), Some("mvpexp"));
+        assert_eq!(detected.map.as_deref(), Some("map"));
+        assert_eq!(detected.prize.as_deref(), Some("prize"));
+    }
+
+    #[test]
+    fn mvp_killer_expression_uses_backticked_char_table() {
+        let columns = MvpLogColumns {
+            killer_id: Some("kill_char_id".to_string()),
+            killer_name: None,
+            monster_id: None,
+            date: None,
+            map: None,
+            exp: None,
+            prize: None,
+        };
+        let expression = mvp_killer_name_expression(&columns, true);
+
+        assert!(expression.contains("`char`.`name`"));
+        assert!(expression.contains("ml.`kill_char_id`"));
     }
 
     #[test]
