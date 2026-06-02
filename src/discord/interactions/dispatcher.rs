@@ -1,5 +1,5 @@
 use crate::cache::{BotCache, StatusCacheEntry, TimedCache};
-use crate::config::{AppConfig, GameBridgeMode, StaffRole, TopZenyMode};
+use crate::config::{AppConfig, StaffRole, TopZenyMode};
 use crate::discord::embeds;
 use crate::infra::observability::CommandTimer;
 use crate::rathenafr::{
@@ -66,7 +66,7 @@ pub async fn create_client(
     let intents = GatewayIntents::empty();
     let handler = Handler {
         state: Arc::new(BotState {
-            game_bridge: GameBridge::new(config.game_bridge.clone()),
+            game_bridge: GameBridge::new(config.game_bridge.clone(), Arc::clone(&database)),
             config,
             database,
             cache: BotCache::default(),
@@ -943,18 +943,30 @@ impl Handler {
                 Ok(message) => message,
                 Err(message) => return self.respond_error(context, command, &message).await,
             };
+        let discord_user_id = command.user.id.get();
+        let discord_username = command.user.name.as_str();
 
         let result = match subcommand {
             "server" => {
                 self.state
                     .game_bridge
-                    .send_global_message(BroadcastMode::Broadcast, &message)
+                    .send_global_message(
+                        BroadcastMode::Broadcast,
+                        &message,
+                        discord_user_id,
+                        discord_username,
+                    )
                     .await
             }
             "blue" => {
                 self.state
                     .game_bridge
-                    .send_global_message(BroadcastMode::KamiBlue, &message)
+                    .send_global_message(
+                        BroadcastMode::KamiBlue,
+                        &message,
+                        discord_user_id,
+                        discord_username,
+                    )
                     .await
             }
             "color" => {
@@ -969,7 +981,12 @@ impl Handler {
                 };
                 self.state
                     .game_bridge
-                    .send_global_message(BroadcastMode::KamiColor(hex), &message)
+                    .send_global_message(
+                        BroadcastMode::KamiColor(hex),
+                        &message,
+                        discord_user_id,
+                        discord_username,
+                    )
                     .await
             }
             "map" => {
@@ -978,39 +995,37 @@ impl Handler {
                         .respond_error(context, command, "Option obligatoire manquante : map.")
                         .await;
                 };
-                self.state.game_bridge.send_map_message(map, &message).await
+                self.state
+                    .game_bridge
+                    .send_map_message(map, &message, discord_user_id, discord_username)
+                    .await
             }
             "test" => Ok(format!("mode test : {message}")),
             _ => Err(anyhow::anyhow!("Sous-commande /gmmsg inconnue.")),
         };
 
-        let result_text = match result {
+        let result_text = match &result {
             Ok(details) => format!("Résultat : `{details}`"),
             Err(error) => format!("Résultat : `{}`", error),
         };
         self.log_staff_action(context, command, subcommand, &message, &result_text)
             .await;
 
-        if self.state.config.game_bridge.mode == GameBridgeMode::Disabled && subcommand != "test" {
-            return self
-                .respond_error(
+        match result {
+            Ok(details) => {
+                self.respond_embed(
                     context,
                     command,
-                    "Le bridge en jeu n’est pas configuré. Le message n’a pas été envoyé.",
+                    embeds::success_message_embed("Message GM", details),
+                    true,
                 )
-                .await;
+                .await
+            }
+            Err(error) => {
+                self.respond_error(context, command, &error.to_string())
+                    .await
+            }
         }
-
-        self.respond_embed(
-            context,
-            command,
-            embeds::success_message_embed(
-                "Message GM",
-                format!("Commande `{subcommand}` traitée.\n{result_text}"),
-            ),
-            true,
-        )
-        .await
     }
 
     async fn handle_staff_player(

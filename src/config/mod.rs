@@ -111,6 +111,7 @@ pub enum TopZenyMode {
 pub enum GameBridgeMode {
     Disabled,
     Test,
+    SqlQueue,
     Bridge,
 }
 
@@ -458,9 +459,10 @@ where
     match value.to_ascii_lowercase().as_str() {
         "disabled" | "off" | "false" => Ok(GameBridgeMode::Disabled),
         "test" | "log" => Ok(GameBridgeMode::Test),
+        "sql_queue" => Ok(GameBridgeMode::SqlQueue),
         "bridge" | "enabled" | "on" | "true" => Ok(GameBridgeMode::Bridge),
         _ => Err(anyhow!(
-            "Valeur invalide pour RATHENAFR_GMMSG_MODE. Valeurs attendues : disabled, test ou bridge."
+            "Valeur invalide pour RATHENAFR_GMMSG_MODE. Valeurs attendues : disabled, test, sql_queue ou bridge."
         )),
     }
 }
@@ -791,5 +793,14 @@ mod tests {
 
         assert_eq!(config.mode, GameBridgeMode::Disabled);
         assert_eq!(config.max_message_length, 180);
+    }
+
+    #[test]
+    fn game_bridge_accepts_sql_queue_mode() {
+        let config =
+            GameBridgeConfig::from_lookup(&lookup(&[("RATHENAFR_GMMSG_MODE", "sql_queue")]))
+                .expect("bridge config");
+
+        assert_eq!(config.mode, GameBridgeMode::SqlQueue);
     }
 }
