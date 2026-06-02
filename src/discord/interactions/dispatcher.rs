@@ -1,5 +1,5 @@
 use crate::cache::{BotCache, StatusCacheEntry, TimedCache};
-use crate::config::AppConfig;
+use crate::config::{AppConfig, AssetConfig};
 use crate::discord::embeds;
 use crate::infra::observability::CommandTimer;
 use crate::rathenafr::{
@@ -331,6 +331,12 @@ impl Handler {
                 .respond_error(context, command, "Option obligatoire manquante : query.")
                 .await;
         };
+        let query = query.trim();
+        if query.is_empty() {
+            return self
+                .respond_error(context, command, "La recherche ne peut pas être vide.")
+                .await;
+        }
         let category = match SearchCategory::from_option(string_option(command, "category")) {
             Ok(category) => category,
             Err(message) => return self.respond_error(context, command, message).await,
@@ -370,10 +376,18 @@ impl Handler {
             },
         };
 
+        warm_search_asset_cache(&self.state.config.assets, &results).await;
+
         self.respond_embeds(
             context,
             command,
-            embeds::search_embeds(query, category.label(), &results, display_limit),
+            embeds::search_embeds(
+                query,
+                category.label(),
+                &results,
+                display_limit,
+                &self.state.config.assets,
+            ),
             false,
         )
         .await
@@ -2099,6 +2113,63 @@ where
     Ok(value)
 }
 
+async fn warm_search_asset_cache(assets: &AssetConfig, results: &SearchResults) {
+    let Some(url) = monster_cache_warmup_url(assets, results) else {
+        return;
+    };
+
+    let client = match reqwest::Client::builder()
+        .timeout(Duration::from_secs(2))
+        .build()
+    {
+        Ok(client) => client,
+        Err(error) => {
+            debug!(error = %error, "Impossible de creer le client de prechargement FluxCP.");
+            return;
+        }
+    };
+
+    match client.get(&url).send().await {
+        Ok(response) => {
+            debug!(
+                url = %url,
+                status = response.status().as_u16(),
+                "Prechargement FluxCP monstre termine."
+            );
+        }
+        Err(error) => {
+            debug!(
+                url = %url,
+                error = %error,
+                "Prechargement FluxCP monstre ignore."
+            );
+        }
+    }
+}
+
+fn monster_cache_warmup_url(assets: &AssetConfig, results: &SearchResults) -> Option<String> {
+    if !results.items.is_empty() {
+        return None;
+    }
+
+    let monster = results.monsters.first()?;
+    let path = assets.monster_image_path.trim();
+
+    if path.starts_with("http://") || path.starts_with("https://") {
+        return None;
+    }
+
+    let base_url = assets.base_url.as_deref()?.trim_end_matches('/');
+    if base_url.is_empty() {
+        return None;
+    }
+
+    Some(format!(
+        "{base_url}/?module=monster&action=view&id={}",
+        monster.monster_id
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2132,6 +2203,73 @@ mod tests {
             SearchCategory::Monsters
         );
         assert!(SearchCategory::from_option(Some("guilds")).is_err());
+    }
+
+    #[test]
+    fn monster_cache_warmup_uses_fluxcp_view_for_relative_monster_images() {
+        let assets = AssetConfig {
+            base_url: Some("https://panel.example.com".to_string()),
+            item_icon_path: "https://cdn.example.com/items/{item_id}.png".to_string(),
+            monster_image_path: "data/monsters/{monster_id}.png".to_string(),
+            character_image_path: None,
+        };
+        let results = SearchResults {
+            characters: Vec::new(),
+            items: Vec::new(),
+            monsters: vec![crate::rathenafr::MonsterSearchEntry {
+                monster_id: 1039,
+                sprite: "BAPHOMET".to_string(),
+                display_name: "Baphomet".to_string(),
+                level: 81,
+                hp: 668000,
+                source_table: "mob_db".to_string(),
+            }],
+        };
+
+        assert_eq!(
+            monster_cache_warmup_url(&assets, &results).as_deref(),
+            Some("https://panel.example.com/?module=monster&action=view&id=1039")
+        );
+    }
+
+    #[test]
+    fn monster_cache_warmup_skips_absolute_monster_images_and_item_first_results() {
+        let assets = AssetConfig {
+            base_url: Some("https://panel.example.com".to_string()),
+            item_icon_path: "https://cdn.example.com/items/{item_id}.png".to_string(),
+            monster_image_path: "https://cdn.example.com/mobs/{monster_id}.png".to_string(),
+            character_image_path: None,
+        };
+        let monster = crate::rathenafr::MonsterSearchEntry {
+            monster_id: 1039,
+            sprite: "BAPHOMET".to_string(),
+            display_name: "Baphomet".to_string(),
+            level: 81,
+            hp: 668000,
+            source_table: "mob_db".to_string(),
+        };
+        let item_first_results = SearchResults {
+            characters: Vec::new(),
+            items: vec![crate::rathenafr::ItemSearchEntry {
+                item_id: 501,
+                aegis_name: "Red_Potion".to_string(),
+                display_name: "Red Potion".to_string(),
+                item_type: "Healing".to_string(),
+                source_table: "item_db".to_string(),
+            }],
+            monsters: vec![monster.clone()],
+        };
+        let absolute_monster_results = SearchResults {
+            characters: Vec::new(),
+            items: Vec::new(),
+            monsters: vec![monster],
+        };
+
+        assert_eq!(monster_cache_warmup_url(&assets, &item_first_results), None);
+        assert_eq!(
+            monster_cache_warmup_url(&assets, &absolute_monster_results),
+            None
+        );
     }
 
     #[test]

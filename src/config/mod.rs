@@ -8,6 +8,7 @@ pub struct AppConfig {
     pub database: DatabaseConfig,
     pub services: ServicesConfig,
     pub display: DisplayConfig,
+    pub assets: AssetConfig,
     pub cache: CacheConfig,
     pub account_commands: AccountCommandsConfig,
 }
@@ -57,6 +58,14 @@ pub struct DisplayConfig {
 }
 
 #[derive(Debug, Clone)]
+pub struct AssetConfig {
+    pub base_url: Option<String>,
+    pub item_icon_path: String,
+    pub monster_image_path: String,
+    pub character_image_path: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct CacheConfig {
     pub enabled: bool,
     pub ttl_seconds: Option<u64>,
@@ -81,6 +90,7 @@ impl AppConfig {
             database: DatabaseConfig::placeholder(),
             services: ServicesConfig::from_env()?,
             display: DisplayConfig::from_env()?,
+            assets: AssetConfig::from_env()?,
             cache: CacheConfig::from_env()?,
             account_commands: AccountCommandsConfig::from_env()?,
         })
@@ -92,6 +102,7 @@ impl AppConfig {
             database: DatabaseConfig::from_env()?,
             services: ServicesConfig::from_env()?,
             display: DisplayConfig::from_env()?,
+            assets: AssetConfig::from_env()?,
             cache: CacheConfig::from_env()?,
             account_commands: AccountCommandsConfig::from_env()?,
         })
@@ -235,6 +246,27 @@ impl DisplayConfig {
         } else {
             i32::MAX
         }
+    }
+}
+
+impl AssetConfig {
+    fn from_env() -> Result<Self> {
+        Self::from_lookup(&optional)
+    }
+
+    fn from_lookup<F>(lookup: &F) -> Result<Self>
+    where
+        F: Fn(&str) -> Option<String>,
+    {
+        Ok(Self {
+            base_url: lookup_value(lookup, "RATHENAFR_ASSETS_BASE_URL")
+                .map(|url| url.trim_end_matches('/').to_string()),
+            item_icon_path: lookup_value(lookup, "RATHENAFR_ITEM_ICON_PATH")
+                .unwrap_or_else(|| "data/items/icons/{item_id}.png".to_string()),
+            monster_image_path: lookup_value(lookup, "RATHENAFR_MONSTER_IMAGE_PATH")
+                .unwrap_or_else(|| "data/monsters/{monster_id}.png".to_string()),
+            character_image_path: lookup_value(lookup, "RATHENAFR_CHARACTER_IMAGE_PATH"),
+        })
     }
 }
 
@@ -504,6 +536,25 @@ mod tests {
             .expect("cache config");
 
         assert_eq!(config.duration(10), None);
+    }
+
+    #[test]
+    fn asset_config_uses_fluxcp_paths_by_default() {
+        let config = AssetConfig::from_lookup(&lookup(&[])).expect("asset config");
+
+        assert_eq!(config.base_url, None);
+        assert_eq!(config.item_icon_path, "data/items/icons/{item_id}.png");
+        assert_eq!(config.monster_image_path, "data/monsters/{monster_id}.png");
+        assert_eq!(config.character_image_path, None);
+    }
+
+    #[test]
+    fn asset_config_trims_base_url() {
+        let config =
+            AssetConfig::from_lookup(&lookup(&[("RATHENAFR_ASSETS_BASE_URL", "http://x/y/")]))
+                .expect("asset config");
+
+        assert_eq!(config.base_url.as_deref(), Some("http://x/y"));
     }
 
     #[test]

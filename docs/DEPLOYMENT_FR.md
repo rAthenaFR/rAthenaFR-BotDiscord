@@ -115,6 +115,17 @@ docker network create athena-network
 
 Les conteneurs que le bot doit joindre doivent être connectés au même réseau Docker, ou bien les variables `RATHENAFR_DB_HOST`, `RATHENAFR_LOGIN_HOST`, `RATHENAFR_CHAR_HOST` et `RATHENAFR_MAP_HOST` doivent pointer vers des adresses joignables depuis le conteneur du bot.
 
+## Configurer les images Discord
+
+Si tu veux afficher les images dans `/search`, configure `RATHENAFR_ASSETS_BASE_URL` avec l’URL publique de ton FluxCP. Cette URL doit être accessible par Discord, pas seulement par le conteneur ou la machine hôte.
+
+```env
+RATHENAFR_ASSETS_BASE_URL=https://panel.example.com
+RATHENAFR_MONSTER_IMAGE_PATH=data/monsters/{monster_id}.png
+```
+
+Avec FluxCP, le bot précharge la page du monstre avant de répondre pour que `data/monsters/{monster_id}.png` soit généré si le cache local n’existe pas encore.
+
 ## Déployer les commandes
 
 Déploie les commandes slash sur le serveur Discord configuré :
@@ -162,5 +173,6 @@ Si seules les commandes Discord ont changé, le `--deploy` est nécessaire. Si s
 - Utilisateur SQL limité à `SELECT`.
 - MariaDB non exposée publiquement.
 - Réseau Docker ou réseau privé configuré.
+- `RATHENAFR_ASSETS_BASE_URL` public configuré si `/search` doit afficher des images.
 - `docker compose run --rm rathenafr-discord-bot --deploy` exécuté au moins une fois.
 - `docker compose up -d --build` exécuté.

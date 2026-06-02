@@ -1,3 +1,4 @@
+use crate::config::AssetConfig;
 use crate::rathenafr::*;
 use serenity::all::{Colour, CreateEmbed, Timestamp};
 
@@ -122,6 +123,7 @@ pub fn search_embeds(
     category_label: &str,
     results: &SearchResults,
     requested_limit: u32,
+    assets: &AssetConfig,
 ) -> Vec<CreateEmbed> {
     if results.is_empty() {
         return vec![warning_embed(
@@ -134,37 +136,30 @@ pub fn search_embeds(
     }
 
     let character_list = limited_list(&results.characters, requested_limit, |index, character| {
-        let image = character_image_url(character)
-            .map(|url| format!(" — [Image]({url})"))
-            .unwrap_or_default();
         format!(
-            "`{:>2}.` **{}** — Base `{}` / Job `{}` — {} — Carte `{}`{}",
+            "`{:>2}.` **{}** — Base `{}` / Job `{}` — {} — Carte `{}`",
             index + 1,
             character.name,
             character.base_level,
             character.job_level,
             job_name(character.class_id),
             character.map,
-            image,
         )
     });
     let item_list = limited_list(&results.items, requested_limit, |index, item| {
-        let image = item_image_url(item);
         format!(
-            "`{:>2}.` **{}** — ID `{}` — Type `{}` — `{}` — `{}` — [Image]({})",
+            "`{:>2}.` **{}** — ID `{}` — Type `{}` — `{}` — `{}`",
             index + 1,
             item.display_name,
             item.item_id,
             item.item_type,
             item.aegis_name,
             item.source_table,
-            image,
         )
     });
     let monster_list = limited_list(&results.monsters, requested_limit, |index, monster| {
-        let image = monster_image_url(monster);
         format!(
-            "`{:>2}.` **{}** — ID `{}` — Sprite `{}` — Niveau `{}` — HP `{}` — Table `{}` — [Image]({})",
+            "`{:>2}.` **{}** — ID `{}` — Sprite `{}` — Niveau `{}` — HP `{}` — Table `{}`",
             index + 1,
             monster.display_name,
             monster.monster_id,
@@ -172,7 +167,6 @@ pub fn search_embeds(
             monster.level,
             format_number(monster.hp),
             monster.source_table,
-            image,
         )
     });
 
@@ -210,79 +204,101 @@ pub fn search_embeds(
             .field("Monstres", monster_list.value, false);
     }
 
-    let mut embeds = vec![embed];
-
-    if let Some(character) = results.characters.first() {
-        if let Some(url) = character_image_url(character) {
-            embeds.push(search_image_embed(
-                "Aperçu personnage",
-                &character.name,
-                format!(
-                    "{} — Base `{}` / Job `{}`",
-                    job_name(character.class_id),
-                    character.base_level,
-                    character.job_level
-                ),
-                url,
-            ));
-        }
+    if let Some(url) = search_primary_image_url(assets, results) {
+        embed = embed.image(url);
     }
 
-    if let Some(item) = results.items.first() {
-        embeds.push(search_image_embed(
-            "Aperçu objet",
-            &item.display_name,
-            format!("ID `{}` — Type `{}`", item.item_id, item.item_type),
-            item_image_url(item),
-        ));
-    }
-
-    if let Some(monster) = results.monsters.first() {
-        embeds.push(search_image_embed(
-            "Aperçu monstre",
-            &monster.display_name,
-            format!(
-                "ID `{}` — Niveau `{}` — HP `{}`",
-                monster.monster_id,
-                monster.level,
-                format_number(monster.hp)
-            ),
-            monster_image_url(monster),
-        ));
-    }
-
-    embeds
+    vec![embed]
 }
 
-fn search_image_embed(
-    title: &str,
-    name: &str,
-    details: impl Into<String>,
-    image_url: String,
-) -> CreateEmbed {
-    info_embed(title, format!("**{}** — {}", name, details.into())).image(image_url)
-}
+fn character_image_url(assets: &AssetConfig, character: &CharacterSummary) -> Option<String> {
+    let replacements = [
+        ("class_id", character.class_id.to_string()),
+        ("gender", character_image_gender(character).to_string()),
+        (
+            "job",
+            job_sprite_name(character.class_id)
+                .unwrap_or("")
+                .to_string(),
+        ),
+    ];
 
-fn character_image_url(character: &CharacterSummary) -> Option<String> {
-    job_sprite_name(character.class_id).map(ro_sprite_url)
-}
-
-fn item_image_url(item: &ItemSearchEntry) -> String {
-    format!(
-        "https://static.divine-pride.net/images/items/item/{}.png",
-        item.item_id
+    asset_url(
+        assets.base_url.as_deref(),
+        assets.character_image_path.as_deref()?,
+        &replacements,
     )
 }
 
-fn monster_image_url(monster: &MonsterSearchEntry) -> String {
-    ro_sprite_url(&monster.sprite)
+fn search_primary_image_url(assets: &AssetConfig, results: &SearchResults) -> Option<String> {
+    results
+        .items
+        .first()
+        .and_then(|item| item_image_url(assets, item))
+        .or_else(|| {
+            results
+                .monsters
+                .first()
+                .and_then(|monster| monster_image_url(assets, monster))
+        })
+        .or_else(|| {
+            results
+                .characters
+                .first()
+                .and_then(|character| character_image_url(assets, character))
+        })
 }
 
-fn ro_sprite_url(sprite_name: &str) -> String {
-    format!(
-        "https://nn.ai4rei.net/dev/npclist/i/{}.gif",
-        urlencoding::encode(sprite_name.trim())
+fn item_image_url(assets: &AssetConfig, item: &ItemSearchEntry) -> Option<String> {
+    let replacements = [("item_id", item.item_id.to_string())];
+
+    asset_url(
+        assets.base_url.as_deref(),
+        &assets.item_icon_path,
+        &replacements,
     )
+}
+
+fn monster_image_url(assets: &AssetConfig, monster: &MonsterSearchEntry) -> Option<String> {
+    let replacements = [
+        ("monster_id", monster.monster_id.to_string()),
+        ("sprite", monster.sprite.clone()),
+    ];
+
+    asset_url(
+        assets.base_url.as_deref(),
+        &assets.monster_image_path,
+        &replacements,
+    )
+}
+
+fn character_image_gender(character: &CharacterSummary) -> &'static str {
+    match character.sex.as_deref().map(str::trim) {
+        Some("F") | Some("f") => "F",
+        _ => "M",
+    }
+}
+
+fn asset_url(
+    base_url: Option<&str>,
+    path_template: &str,
+    replacements: &[(&str, String)],
+) -> Option<String> {
+    let path = replacements
+        .iter()
+        .fold(path_template.to_string(), |path, (key, value)| {
+            path.replace(&format!("{{{key}}}"), &urlencoding::encode(value.trim()))
+        });
+    let path = path.trim_start_matches('/');
+
+    if path.is_empty() {
+        None
+    } else if path.starts_with("http://") || path.starts_with("https://") {
+        Some(path.to_string())
+    } else {
+        let base_url = base_url?;
+        Some(format!("{base_url}/{path}"))
+    }
 }
 
 pub fn ranking_embed(entries: &[RankingEntry], requested_limit: u32) -> CreateEmbed {
@@ -2025,5 +2041,33 @@ mod tests {
         assert_eq!(list.displayed_count, 1);
         assert_eq!(list.available_count, 2);
         assert!(list_summary(&list, "lignes").contains("les limites de champ des embeds Discord"));
+    }
+
+    #[test]
+    fn asset_url_supports_absolute_templates() {
+        let url = asset_url(
+            Some("https://panel.example.com"),
+            "https://cdn.example.com/items/{item_id}.png",
+            &[("item_id", "501".to_string())],
+        );
+
+        assert_eq!(
+            url.as_deref(),
+            Some("https://cdn.example.com/items/501.png")
+        );
+    }
+
+    #[test]
+    fn asset_url_supports_absolute_templates_without_base_url() {
+        let url = asset_url(
+            None,
+            "https://cdn.example.com/jobs/{class_id}.png",
+            &[("class_id", "4001".to_string())],
+        );
+
+        assert_eq!(
+            url.as_deref(),
+            Some("https://cdn.example.com/jobs/4001.png")
+        );
     }
 }

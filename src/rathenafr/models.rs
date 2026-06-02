@@ -15,6 +15,7 @@ pub struct CharacterSummary {
     pub base_level: i32,
     pub job_level: i32,
     pub map: String,
+    pub sex: Option<String>,
 }
 
 #[derive(Debug, Clone)]

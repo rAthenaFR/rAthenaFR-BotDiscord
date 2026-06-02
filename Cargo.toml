@@ -26,6 +26,7 @@ serenity = { version = "0.12", default-features = false, features = [
   "model",
   "rustls_backend"
 ] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 sqlx = { version = "0.8", default-features = false, features = [
   "mysql",
   "runtime-tokio-rustls"

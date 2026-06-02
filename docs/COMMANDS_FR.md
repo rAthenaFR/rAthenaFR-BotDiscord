@@ -41,6 +41,9 @@ Documentation française de rAthenaFR Discord Bot pour le projet rAthena.
 | `/buyers` | Boutiques d’achat actives. |
 
 La recherche d’objets et de monstres utilise les tables SQL `item_db`, `item_db_re`, `mob_db` et `mob_db_re` quand elles existent dans la base cible.
+Les aperçus d’images sont affichés dans le même embed que les résultats. Les chemins relatifs utilisent `RATHENAFR_ASSETS_BASE_URL`; les URLs absolues configurées sont utilisées directement.
+Pour les monstres FluxCP (`data/monsters/{monster_id}.png`), le bot précharge automatiquement la page `?module=monster&action=view&id=...` avant de répondre afin que FluxCP génère le cache local si nécessaire.
+Sans URL exploitable, `/search` affiche les résultats sans image.
 
 > [!TIP]
 > `/search` accepte `category` avec les choix `Tout`, `Joueurs`, `Items` et `Monstres`. Choisir une catégorie évite de requêter les autres sources et affiche un aperçu d’image pour le premier résultat de chaque type trouvé.

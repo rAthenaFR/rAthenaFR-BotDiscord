@@ -1,6 +1,6 @@
 use crate::config::{AccountPasswordMode, DatabaseConfig};
 use anyhow::{Context, Result};
-use sqlx::{mysql::MySqlPoolOptions, MySql, MySqlPool, Row, Transaction};
+use sqlx::{mysql::MySqlPoolOptions, mysql::MySqlRow, MySql, MySqlPool, Row, Transaction};
 use std::time::Duration;
 
 #[derive(Clone)]
@@ -55,8 +55,190 @@ use crate::rathenafr::models::*;
 
 const ITEM_SEARCH_TABLES: &[&str] = &["item_db", "item_db_re"];
 const MOB_SEARCH_TABLES: &[&str] = &["mob_db", "mob_db_re"];
+const ITEM_AEGIS_COLUMN_CANDIDATES: &[&str] = &[
+    "name_aegis",
+    "aegis_name",
+    "name_japanese",
+    "name_english",
+    "name",
+];
+const ITEM_DISPLAY_COLUMN_CANDIDATES: &[&str] = &[
+    "name_english",
+    "name_japanese",
+    "name_aegis",
+    "aegis_name",
+    "name",
+];
+const ITEM_TYPE_COLUMN_CANDIDATES: &[&str] = &["type", "item_type"];
+const MONSTER_SPRITE_COLUMN_CANDIDATES: &[&str] = &["sprite"];
+const MONSTER_DISPLAY_COLUMN_CANDIDATES: &[&str] = &[
+    "iROName",
+    "iro_name",
+    "name_english",
+    "name",
+    "kROName",
+    "kro_name",
+    "name_japanese",
+    "sprite",
+];
+const MONSTER_LEVEL_COLUMN_CANDIDATES: &[&str] = &["LV", "level", "lv"];
+const MONSTER_HP_COLUMN_CANDIDATES: &[&str] = &["HP", "hp"];
 const ACCOUNT_DELETE_ACCOUNT_ID_SKIP_TABLES: &[&str] = &["char", "login"];
 const ACCOUNT_DELETE_CHAR_ID_SKIP_TABLES: &[&str] = &["char", "guild"];
+
+#[derive(Debug, Clone)]
+struct AvailableColumns {
+    names: Vec<String>,
+}
+
+impl AvailableColumns {
+    fn first(&self, candidates: &[&str]) -> Option<String> {
+        candidates.iter().find_map(|candidate| {
+            self.names
+                .iter()
+                .find(|name| name.eq_ignore_ascii_case(candidate))
+                .cloned()
+        })
+    }
+
+    fn all(&self, candidates: &[&str]) -> Vec<String> {
+        let mut matches = Vec::new();
+
+        for candidate in candidates {
+            if let Some(name) = self.first(&[*candidate]) {
+                if !matches
+                    .iter()
+                    .any(|existing: &String| existing.eq_ignore_ascii_case(&name))
+                {
+                    matches.push(name);
+                }
+            }
+        }
+
+        matches
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ItemSearchColumns {
+    id: String,
+    aegis_name: String,
+    display_name: String,
+    item_type: Option<String>,
+    searchable_names: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct MonsterSearchColumns {
+    id: String,
+    sprite: Option<String>,
+    display_name: String,
+    level: Option<String>,
+    hp: Option<String>,
+    searchable_names: Vec<String>,
+}
+
+fn cast_column_as_char(column_name: &str) -> String {
+    format!("CAST({} AS CHAR)", quote_identifier(column_name))
+}
+
+fn cast_column_as_signed(column_name: &str) -> String {
+    format!("CAST({} AS SIGNED)", quote_identifier(column_name))
+}
+
+fn exact_conditions(column_names: &[String]) -> String {
+    column_names
+        .iter()
+        .map(|column_name| format!("{} = ?", cast_column_as_char(column_name)))
+        .collect::<Vec<_>>()
+        .join(" OR ")
+}
+
+fn like_conditions(column_names: &[String]) -> String {
+    column_names
+        .iter()
+        .map(|column_name| format!("{} LIKE ?", cast_column_as_char(column_name)))
+        .collect::<Vec<_>>()
+        .join(" OR ")
+}
+
+fn parse_search_id(query: &str) -> Option<i64> {
+    let trimmed = query.trim();
+
+    if trimmed.is_empty() || !trimmed.chars().all(|character| character.is_ascii_digit()) {
+        return None;
+    }
+
+    trimmed.parse::<i64>().ok().filter(|value| *value > 0)
+}
+
+fn item_search_entry_from_row(row: MySqlRow) -> Result<ItemSearchEntry> {
+    let item_id = row.try_get("item_id")?;
+    let display_name = row
+        .try_get::<Option<String>, _>("item_display_name")?
+        .unwrap_or_default();
+    let aegis_name = row
+        .try_get::<Option<String>, _>("item_aegis_name")?
+        .unwrap_or_default();
+    let display_name = if display_name.trim().is_empty() {
+        aegis_name.clone()
+    } else {
+        display_name
+    };
+    let display_name = if display_name.trim().is_empty() {
+        format!("Objet {item_id}")
+    } else {
+        display_name
+    };
+    let item_type = row
+        .try_get::<Option<String>, _>("item_type")?
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "inconnu".to_string());
+    let aegis_name = if aegis_name.trim().is_empty() {
+        display_name.clone()
+    } else {
+        aegis_name
+    };
+
+    Ok(ItemSearchEntry {
+        item_id,
+        aegis_name,
+        display_name,
+        item_type,
+        source_table: row.try_get("source_table")?,
+    })
+}
+
+fn monster_search_entry_from_row(row: MySqlRow) -> Result<MonsterSearchEntry> {
+    let monster_id = row.try_get("monster_id")?;
+    let sprite = row
+        .try_get::<Option<String>, _>("monster_sprite")?
+        .unwrap_or_default();
+    let display_name = row
+        .try_get::<Option<String>, _>("monster_display_name")?
+        .unwrap_or_default();
+    let display_name = if !display_name.trim().is_empty() {
+        display_name
+    } else if !sprite.trim().is_empty() {
+        sprite.clone()
+    } else {
+        format!("Monstre {monster_id}")
+    };
+    let sprite = if sprite.trim().is_empty() {
+        display_name.clone()
+    } else {
+        sprite
+    };
+
+    Ok(MonsterSearchEntry {
+        monster_id,
+        sprite,
+        display_name,
+        level: row.try_get("monster_level")?,
+        hp: row.try_get("monster_hp")?,
+        source_table: row.try_get("source_table")?,
+    })
+}
 
 impl RAthenaFrDatabase {
     pub async fn connect(config: &DatabaseConfig) -> Result<Self> {
@@ -139,6 +321,81 @@ impl RAthenaFrDatabase {
         Ok(true)
     }
 
+    async fn table_columns(&self, table_name: &str) -> Result<Option<AvailableColumns>> {
+        if !self.table_exists(table_name).await? {
+            return Ok(None);
+        }
+
+        let rows = sqlx::query(
+            r#"
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = DATABASE()
+              AND table_name = ?
+            ORDER BY ordinal_position ASC
+            "#,
+        )
+        .bind(table_name)
+        .fetch_all(&self.pool)
+        .await
+        .with_context(|| format!("list columns for rAthena table {table_name}"))?;
+
+        let names = rows
+            .into_iter()
+            .map(|row| row.try_get("column_name").map_err(Into::into))
+            .collect::<Result<Vec<String>>>()?;
+
+        Ok(Some(AvailableColumns { names }))
+    }
+
+    async fn item_search_columns(&self, table_name: &str) -> Result<Option<ItemSearchColumns>> {
+        let Some(columns) = self.table_columns(table_name).await? else {
+            return Ok(None);
+        };
+        let Some(id) = columns.first(&["id"]) else {
+            return Ok(None);
+        };
+        let Some(display_name) = columns.first(ITEM_DISPLAY_COLUMN_CANDIDATES) else {
+            return Ok(None);
+        };
+
+        let aegis_name = columns
+            .first(ITEM_AEGIS_COLUMN_CANDIDATES)
+            .unwrap_or_else(|| display_name.clone());
+
+        Ok(Some(ItemSearchColumns {
+            id,
+            aegis_name,
+            display_name,
+            item_type: columns.first(ITEM_TYPE_COLUMN_CANDIDATES),
+            searchable_names: columns.all(ITEM_DISPLAY_COLUMN_CANDIDATES),
+        }))
+    }
+
+    async fn monster_search_columns(
+        &self,
+        table_name: &str,
+    ) -> Result<Option<MonsterSearchColumns>> {
+        let Some(columns) = self.table_columns(table_name).await? else {
+            return Ok(None);
+        };
+        let Some(id) = columns.first(&["id"]) else {
+            return Ok(None);
+        };
+        let Some(display_name) = columns.first(MONSTER_DISPLAY_COLUMN_CANDIDATES) else {
+            return Ok(None);
+        };
+
+        Ok(Some(MonsterSearchColumns {
+            id,
+            sprite: columns.first(MONSTER_SPRITE_COLUMN_CANDIDATES),
+            display_name,
+            level: columns.first(MONSTER_LEVEL_COLUMN_CANDIDATES),
+            hp: columns.first(MONSTER_HP_COLUMN_CANDIDATES),
+            searchable_names: columns.all(MONSTER_DISPLAY_COLUMN_CANDIDATES),
+        }))
+    }
+
     pub async fn database_status(&self, group_threshold: i32) -> Result<DatabaseStatus> {
         let row = sqlx::query(
             r#"
@@ -199,7 +456,8 @@ impl RAthenaFrDatabase {
                 CAST(c.class AS SIGNED) AS class_id,
                 CAST(c.base_level AS SIGNED) AS base_level,
                 CAST(c.job_level AS SIGNED) AS job_level,
-                c.last_map
+                c.last_map,
+                l.sex
             FROM `char` c
             INNER JOIN `login` l ON l.account_id = c.account_id
             WHERE c.online = 1 AND l.group_id < ?
@@ -221,6 +479,7 @@ impl RAthenaFrDatabase {
                     base_level: row.try_get("base_level")?,
                     job_level: row.try_get("job_level")?,
                     map: row.try_get("last_map")?,
+                    sex: row.try_get("sex")?,
                 })
             })
             .collect()
@@ -324,7 +583,8 @@ impl RAthenaFrDatabase {
                 CAST(c.class AS SIGNED) AS class_id,
                 CAST(c.base_level AS SIGNED) AS base_level,
                 CAST(c.job_level AS SIGNED) AS job_level,
-                c.last_map
+                c.last_map,
+                l.sex
             FROM `char` c
             INNER JOIN `login` l ON l.account_id = c.account_id
             WHERE c.name LIKE ? AND l.group_id < ?
@@ -355,6 +615,7 @@ impl RAthenaFrDatabase {
                     base_level: row.try_get("base_level")?,
                     job_level: row.try_get("job_level")?,
                     map: row.try_get("last_map")?,
+                    sex: row.try_get("sex")?,
                 })
             })
             .collect()
@@ -384,17 +645,22 @@ impl RAthenaFrDatabase {
 
     pub async fn search_items(&self, query: &str, limit: u32) -> Result<Vec<ItemSearchEntry>> {
         let mut entries = Vec::new();
+        let exact_id = parse_search_id(query);
 
         for table_name in ITEM_SEARCH_TABLES {
-            if !self
-                .table_has_columns(table_name, &["id", "name_aegis", "name_english", "type"])
-                .await?
-            {
+            let Some(columns) = self.item_search_columns(table_name).await? else {
                 continue;
-            }
+            };
 
-            let table_entries = self.search_items_in_table(table_name, query, limit).await?;
+            let table_entries = self
+                .search_items_in_table(table_name, &columns, query, exact_id, limit)
+                .await?;
             entries.extend(table_entries);
+
+            if exact_id.is_some() && !entries.is_empty() {
+                entries.truncate(1);
+                break;
+            }
 
             if entries.len() >= limit as usize {
                 entries.truncate(limit as usize);
@@ -408,69 +674,137 @@ impl RAthenaFrDatabase {
     async fn search_items_in_table(
         &self,
         table_name: &str,
+        columns: &ItemSearchColumns,
         query: &str,
+        exact_id: Option<i64>,
         limit: u32,
     ) -> Result<Vec<ItemSearchEntry>> {
+        if let Some(item_id) = exact_id {
+            return self
+                .search_items_in_table_by_id(table_name, columns, item_id)
+                .await;
+        }
+
         let pattern = format!("%{}%", query);
         let prefix = format!("{}%", query);
+        let table_identifier = quote_identifier(table_name);
+        let id_as_char = cast_column_as_char(&columns.id);
+        let name_like_conditions = like_conditions(&columns.searchable_names);
+        let exact_name_conditions = exact_conditions(&columns.searchable_names);
+        let prefix_name_conditions = like_conditions(&columns.searchable_names);
+        let where_clause = if name_like_conditions.is_empty() {
+            format!("{id_as_char} = ?")
+        } else {
+            format!("{id_as_char} = ? OR {name_like_conditions}")
+        };
+        let exact_rank = if exact_name_conditions.is_empty() {
+            "FALSE".to_string()
+        } else {
+            exact_name_conditions
+        };
+        let prefix_rank = if prefix_name_conditions.is_empty() {
+            "FALSE".to_string()
+        } else {
+            prefix_name_conditions
+        };
+        let item_type_expression = columns
+            .item_type
+            .as_deref()
+            .map(cast_column_as_char)
+            .unwrap_or_else(|| "NULL".to_string());
         let sql = format!(
             r#"
             SELECT
                 ? AS source_table,
-                CAST(id AS SIGNED) AS item_id,
-                name_aegis,
-                name_english,
-                CAST(`type` AS CHAR) AS item_type
-            FROM `{table_name}`
-            WHERE CAST(id AS CHAR) = ?
-               OR name_aegis LIKE ?
-               OR name_english LIKE ?
+                {} AS item_id,
+                {} AS item_aegis_name,
+                {} AS item_display_name,
+                {} AS item_type
+            FROM {table_identifier}
+            WHERE {where_clause}
             ORDER BY
                 CASE
-                    WHEN CAST(id AS CHAR) = ? THEN 0
-                    WHEN name_english = ? OR name_aegis = ? THEN 1
-                    WHEN name_english LIKE ? OR name_aegis LIKE ? THEN 2
+                    WHEN {id_as_char} = ? THEN 0
+                    WHEN {exact_rank} THEN 1
+                    WHEN {prefix_rank} THEN 2
                     ELSE 3
                 END,
-                id ASC
+                {} ASC
             LIMIT ?
-            "#
+            "#,
+            cast_column_as_signed(&columns.id),
+            cast_column_as_char(&columns.aegis_name),
+            cast_column_as_char(&columns.display_name),
+            item_type_expression,
+            quote_identifier(&columns.id),
         );
 
-        let rows = sqlx::query(&sql)
-            .bind(table_name)
-            .bind(query)
-            .bind(&pattern)
-            .bind(&pattern)
-            .bind(query)
-            .bind(query)
-            .bind(query)
-            .bind(&prefix)
-            .bind(&prefix)
+        let mut sql_query = sqlx::query(&sql).bind(table_name).bind(query);
+
+        for _ in &columns.searchable_names {
+            sql_query = sql_query.bind(&pattern);
+        }
+
+        sql_query = sql_query.bind(query);
+
+        for _ in &columns.searchable_names {
+            sql_query = sql_query.bind(query);
+        }
+
+        for _ in &columns.searchable_names {
+            sql_query = sql_query.bind(&prefix);
+        }
+
+        let rows = sql_query
             .bind(limit)
             .fetch_all(&self.pool)
             .await
             .with_context(|| format!("search items in {table_name}"))?;
 
-        rows.into_iter()
-            .map(|row| {
-                let english_name = row.try_get::<String, _>("name_english")?;
-                let aegis_name = row.try_get::<String, _>("name_aegis")?;
-                let display_name = if english_name.trim().is_empty() {
-                    aegis_name.clone()
-                } else {
-                    english_name
-                };
+        rows.into_iter().map(item_search_entry_from_row).collect()
+    }
 
-                Ok(ItemSearchEntry {
-                    item_id: row.try_get("item_id")?,
-                    aegis_name,
-                    display_name,
-                    item_type: row.try_get("item_type")?,
-                    source_table: row.try_get("source_table")?,
-                })
-            })
-            .collect()
+    async fn search_items_in_table_by_id(
+        &self,
+        table_name: &str,
+        columns: &ItemSearchColumns,
+        item_id: i64,
+    ) -> Result<Vec<ItemSearchEntry>> {
+        let table_identifier = quote_identifier(table_name);
+        let item_type_expression = columns
+            .item_type
+            .as_deref()
+            .map(cast_column_as_char)
+            .unwrap_or_else(|| "NULL".to_string());
+        let sql = format!(
+            r#"
+            SELECT
+                ? AS source_table,
+                {} AS item_id,
+                {} AS item_aegis_name,
+                {} AS item_display_name,
+                {} AS item_type
+            FROM {table_identifier}
+            WHERE {} = ?
+            ORDER BY {} ASC
+            LIMIT 1
+            "#,
+            cast_column_as_signed(&columns.id),
+            cast_column_as_char(&columns.aegis_name),
+            cast_column_as_char(&columns.display_name),
+            item_type_expression,
+            cast_column_as_signed(&columns.id),
+            quote_identifier(&columns.id),
+        );
+
+        let rows = sqlx::query(&sql)
+            .bind(table_name)
+            .bind(item_id)
+            .fetch_all(&self.pool)
+            .await
+            .with_context(|| format!("search item id {item_id} in {table_name}"))?;
+
+        rows.into_iter().map(item_search_entry_from_row).collect()
     }
 
     pub async fn search_monsters(
@@ -479,22 +813,22 @@ impl RAthenaFrDatabase {
         limit: u32,
     ) -> Result<Vec<MonsterSearchEntry>> {
         let mut entries = Vec::new();
+        let exact_id = parse_search_id(query);
 
         for table_name in MOB_SEARCH_TABLES {
-            if !self
-                .table_has_columns(
-                    table_name,
-                    &["id", "sprite", "kROName", "iROName", "LV", "HP"],
-                )
-                .await?
-            {
+            let Some(columns) = self.monster_search_columns(table_name).await? else {
                 continue;
-            }
+            };
 
             let table_entries = self
-                .search_monsters_in_table(table_name, query, limit)
+                .search_monsters_in_table(table_name, &columns, query, exact_id, limit)
                 .await?;
             entries.extend(table_entries);
+
+            if exact_id.is_some() && !entries.is_empty() {
+                entries.truncate(1);
+                break;
+            }
 
             if entries.len() >= limit as usize {
                 entries.truncate(limit as usize);
@@ -508,78 +842,164 @@ impl RAthenaFrDatabase {
     async fn search_monsters_in_table(
         &self,
         table_name: &str,
+        columns: &MonsterSearchColumns,
         query: &str,
+        exact_id: Option<i64>,
         limit: u32,
     ) -> Result<Vec<MonsterSearchEntry>> {
+        if let Some(monster_id) = exact_id {
+            return self
+                .search_monsters_in_table_by_id(table_name, columns, monster_id)
+                .await;
+        }
+
         let pattern = format!("%{}%", query);
         let prefix = format!("{}%", query);
+        let table_identifier = quote_identifier(table_name);
+        let id_as_char = cast_column_as_char(&columns.id);
+        let name_like_conditions = like_conditions(&columns.searchable_names);
+        let exact_name_conditions = exact_conditions(&columns.searchable_names);
+        let prefix_name_conditions = like_conditions(&columns.searchable_names);
+        let where_clause = if name_like_conditions.is_empty() {
+            format!("{id_as_char} = ?")
+        } else {
+            format!("{id_as_char} = ? OR {name_like_conditions}")
+        };
+        let exact_rank = if exact_name_conditions.is_empty() {
+            "FALSE".to_string()
+        } else {
+            exact_name_conditions
+        };
+        let prefix_rank = if prefix_name_conditions.is_empty() {
+            "FALSE".to_string()
+        } else {
+            prefix_name_conditions
+        };
+        let sprite_expression = columns
+            .sprite
+            .as_deref()
+            .map(cast_column_as_char)
+            .unwrap_or_else(|| cast_column_as_char(&columns.display_name));
+        let level_expression = columns
+            .level
+            .as_deref()
+            .map(cast_column_as_signed)
+            .unwrap_or_else(|| "0".to_string());
+        let hp_expression = columns
+            .hp
+            .as_deref()
+            .map(cast_column_as_signed)
+            .unwrap_or_else(|| "0".to_string());
         let sql = format!(
             r#"
             SELECT
                 ? AS source_table,
-                CAST(id AS SIGNED) AS monster_id,
-                sprite,
-                kROName,
-                iROName,
-                CAST(LV AS SIGNED) AS monster_level,
-                CAST(HP AS SIGNED) AS monster_hp
-            FROM `{table_name}`
-            WHERE CAST(id AS CHAR) = ?
-               OR sprite LIKE ?
-               OR kROName LIKE ?
-               OR iROName LIKE ?
+                {} AS monster_id,
+                {} AS monster_sprite,
+                {} AS monster_display_name,
+                {} AS monster_level,
+                {} AS monster_hp
+            FROM {table_identifier}
+            WHERE {where_clause}
             ORDER BY
                 CASE
-                    WHEN CAST(id AS CHAR) = ? THEN 0
-                    WHEN iROName = ? OR kROName = ? OR sprite = ? THEN 1
-                    WHEN iROName LIKE ? OR kROName LIKE ? OR sprite LIKE ? THEN 2
+                    WHEN {id_as_char} = ? THEN 0
+                    WHEN {exact_rank} THEN 1
+                    WHEN {prefix_rank} THEN 2
                     ELSE 3
                 END,
-                id ASC
+                {} ASC
             LIMIT ?
-            "#
+            "#,
+            cast_column_as_signed(&columns.id),
+            sprite_expression,
+            cast_column_as_char(&columns.display_name),
+            level_expression,
+            hp_expression,
+            quote_identifier(&columns.id),
         );
 
-        let rows = sqlx::query(&sql)
-            .bind(table_name)
-            .bind(query)
-            .bind(&pattern)
-            .bind(&pattern)
-            .bind(&pattern)
-            .bind(query)
-            .bind(query)
-            .bind(query)
-            .bind(query)
-            .bind(&prefix)
-            .bind(&prefix)
-            .bind(&prefix)
+        let mut sql_query = sqlx::query(&sql).bind(table_name).bind(query);
+
+        for _ in &columns.searchable_names {
+            sql_query = sql_query.bind(&pattern);
+        }
+
+        sql_query = sql_query.bind(query);
+
+        for _ in &columns.searchable_names {
+            sql_query = sql_query.bind(query);
+        }
+
+        for _ in &columns.searchable_names {
+            sql_query = sql_query.bind(&prefix);
+        }
+
+        let rows = sql_query
             .bind(limit)
             .fetch_all(&self.pool)
             .await
             .with_context(|| format!("search monsters in {table_name}"))?;
 
         rows.into_iter()
-            .map(|row| {
-                let iro_name = row.try_get::<String, _>("iROName")?;
-                let kro_name = row.try_get::<String, _>("kROName")?;
-                let sprite = row.try_get::<String, _>("sprite")?;
-                let display_name = if !iro_name.trim().is_empty() {
-                    iro_name
-                } else if !kro_name.trim().is_empty() {
-                    kro_name
-                } else {
-                    sprite.clone()
-                };
+            .map(monster_search_entry_from_row)
+            .collect()
+    }
 
-                Ok(MonsterSearchEntry {
-                    monster_id: row.try_get("monster_id")?,
-                    sprite,
-                    display_name,
-                    level: row.try_get("monster_level")?,
-                    hp: row.try_get("monster_hp")?,
-                    source_table: row.try_get("source_table")?,
-                })
-            })
+    async fn search_monsters_in_table_by_id(
+        &self,
+        table_name: &str,
+        columns: &MonsterSearchColumns,
+        monster_id: i64,
+    ) -> Result<Vec<MonsterSearchEntry>> {
+        let table_identifier = quote_identifier(table_name);
+        let sprite_expression = columns
+            .sprite
+            .as_deref()
+            .map(cast_column_as_char)
+            .unwrap_or_else(|| cast_column_as_char(&columns.display_name));
+        let level_expression = columns
+            .level
+            .as_deref()
+            .map(cast_column_as_signed)
+            .unwrap_or_else(|| "0".to_string());
+        let hp_expression = columns
+            .hp
+            .as_deref()
+            .map(cast_column_as_signed)
+            .unwrap_or_else(|| "0".to_string());
+        let sql = format!(
+            r#"
+            SELECT
+                ? AS source_table,
+                {} AS monster_id,
+                {} AS monster_sprite,
+                {} AS monster_display_name,
+                {} AS monster_level,
+                {} AS monster_hp
+            FROM {table_identifier}
+            WHERE {} = ?
+            ORDER BY {} ASC
+            LIMIT 1
+            "#,
+            cast_column_as_signed(&columns.id),
+            sprite_expression,
+            cast_column_as_char(&columns.display_name),
+            level_expression,
+            hp_expression,
+            cast_column_as_signed(&columns.id),
+            quote_identifier(&columns.id),
+        );
+
+        let rows = sqlx::query(&sql)
+            .bind(table_name)
+            .bind(monster_id)
+            .fetch_all(&self.pool)
+            .await
+            .with_context(|| format!("search monster id {monster_id} in {table_name}"))?;
+
+        rows.into_iter()
+            .map(monster_search_entry_from_row)
             .collect()
     }
 
@@ -859,7 +1279,8 @@ impl RAthenaFrDatabase {
                 CAST(c.class AS SIGNED) AS class_id,
                 CAST(c.base_level AS SIGNED) AS base_level,
                 CAST(c.job_level AS SIGNED) AS job_level,
-                c.last_map
+                c.last_map,
+                l.sex
             FROM `char` c
             INNER JOIN `login` l ON l.account_id = c.account_id
             WHERE c.online = 1
@@ -884,6 +1305,7 @@ impl RAthenaFrDatabase {
                     base_level: row.try_get("base_level")?,
                     job_level: row.try_get("job_level")?,
                     map: row.try_get("last_map")?,
+                    sex: row.try_get("sex")?,
                 })
             })
             .collect()
@@ -2770,4 +3192,39 @@ fn contains_table_name(table_names: &[&str], table_name: &str) -> bool {
 
 fn quote_identifier(identifier: &str) -> String {
     format!("`{}`", identifier.replace('`', "``"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn available_columns_resolve_candidates_case_insensitively() {
+        let columns = AvailableColumns {
+            names: vec![
+                "id".to_string(),
+                "name_english".to_string(),
+                "LV".to_string(),
+            ],
+        };
+
+        assert_eq!(columns.first(&["ID"]).as_deref(), Some("id"));
+        assert_eq!(columns.first(&["level", "lv"]).as_deref(), Some("LV"));
+        assert_eq!(columns.all(&["name_english", "NAME_ENGLISH"]).len(), 1);
+    }
+
+    #[test]
+    fn quote_identifier_escapes_backticks() {
+        assert_eq!(quote_identifier("safe_name"), "`safe_name`");
+        assert_eq!(quote_identifier("bad`name"), "`bad``name`");
+    }
+
+    #[test]
+    fn parse_search_id_only_accepts_positive_numeric_queries() {
+        assert_eq!(parse_search_id("501"), Some(501));
+        assert_eq!(parse_search_id("  000501  "), Some(501));
+        assert_eq!(parse_search_id("Poring"), None);
+        assert_eq!(parse_search_id("501a"), None);
+        assert_eq!(parse_search_id("0"), None);
+    }
 }

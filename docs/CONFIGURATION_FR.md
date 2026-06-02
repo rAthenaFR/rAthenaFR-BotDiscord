@@ -92,6 +92,28 @@ Sur un serveur distant, ces hôtes doivent être joignables depuis le conteneur 
 > [!WARNING]
 > N’expose pas les ports MariaDB/MySQL, login, char ou map directement sur Internet.
 
+## Images de recherche
+
+```env
+RATHENAFR_ASSETS_BASE_URL=https://panel.example.com
+RATHENAFR_ITEM_ICON_PATH=https://static.divine-pride.net/images/items/collection/{item_id}.png
+RATHENAFR_MONSTER_IMAGE_PATH=data/monsters/{monster_id}.png
+RATHENAFR_CHARACTER_IMAGE_PATH=https://static.divine-pride.net/images/jobs/{class_id}.png
+```
+
+`RATHENAFR_ASSETS_BASE_URL` sert uniquement aux chemins relatifs. Elle doit pointer vers une URL publique accessible par Discord, par exemple le FluxCP public. N’utilise pas `localhost` ou `127.0.0.1` pour les embeds Discord.
+
+`RATHENAFR_ITEM_ICON_PATH`, `RATHENAFR_MONSTER_IMAGE_PATH` et `RATHENAFR_CHARACTER_IMAGE_PATH` acceptent soit un chemin relatif au panel, soit une URL absolue. Les placeholders disponibles sont `{item_id}`, `{monster_id}`, `{sprite}`, `{class_id}`, `{gender}` et `{job}` selon le type d’image.
+
+Pour les monstres FluxCP, garde `data/monsters/{monster_id}.png`. Le bot précharge automatiquement la page du monstre avant de répondre pour laisser FluxCP générer le fichier local si le cache n’existe pas encore.
+
+Si ton FluxCP fournit les images localement, tu peux remplacer les fallbacks externes par des chemins serveur :
+
+```env
+RATHENAFR_ITEM_ICON_PATH=data/items/images/{item_id}.png
+RATHENAFR_CHARACTER_IMAGE_PATH=data/jobs/images/{gender}/{class_id}.gif
+```
+
 ## Visibilité et limites
 
 ```env
