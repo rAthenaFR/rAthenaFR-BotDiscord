@@ -26,8 +26,11 @@ RATHENAFR_STAFF_LOG_CHANNEL_ID=
 
 Les valeurs sont des IDs Discord séparés par des virgules. Les anciens alias `RATHENAFR_STAFF_ROLE_IDS`, `DISCORD_STAFF_ROLE_IDS`, `DISCORD_ADMIN_ROLE_IDS` et `DISCORD_OWNER_ROLE_IDS` restent acceptés pour compatibilité.
 
-!!! tip "Rôles dédiés"
-    Utilise des rôles Discord dédiés au bot plutôt que des rôles trop larges. Cela permet de retirer un accès sans modifier l’organisation globale du serveur Discord.
+> [!TIP]
+> **Rôles dédiés**
+>
+> Utilise des rôles Discord dédiés au bot plutôt que des rôles trop larges.
+> Cela permet de retirer un accès sans modifier l’organisation globale du serveur Discord.
 
 ## Packs et commandes
 
@@ -77,8 +80,11 @@ Modes disponibles pour `/gmmsg` :
 - `test` : réponse et log uniquement.
 - `bridge` : utilisation de GameBridge.
 
-!!! warning "Transport GameBridge"
-    Aucun transport map-server concret n’est actif par défaut. Le mode `bridge` suppose qu’une implémentation GameBridge opérationnelle est disponible.
+> [!IMPORTANT]
+> **Transport GameBridge**
+>
+> Aucun transport map-server concret n’est actif par défaut.
+> Le mode `bridge` suppose qu’une implémentation GameBridge opérationnelle est disponible.
 
 `/gmmsg color` valide strictement `RRGGBB`. Les messages sont nettoyés et les mentions `@everyone`/`@here` sont neutralisées dans les logs Discord.
 
@@ -91,8 +97,11 @@ RATHENAFR_ACCOUNT_PASSWORD_MODE=plain
 
 `/createaccount` est conservée et déclarée. Elle refuse la création tant que `RATHENAFR_ACCOUNT_CREATION_ENABLED=false`.
 
-!!! danger "Écriture SQL"
-    `/createaccount` est la seule commande conservée qui peut écrire en base. Elle nécessite `INSERT` sur `login` uniquement si elle est activée.
+> [!CAUTION]
+> **Écriture SQL**
+>
+> `/createaccount` est la seule commande conservée qui peut écrire en base.
+> Elle nécessite `INSERT` sur `login` uniquement si elle est activée.
 
 ## Base de données et services
 

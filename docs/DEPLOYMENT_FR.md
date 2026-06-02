@@ -4,13 +4,18 @@
 
 Le bot n’a pas besoin de port entrant public. Il doit joindre Discord, MariaDB/MySQL et, pour les checks serveur de `/server`, les ports login/char/map si tu les configures.
 
-!!! example "Fichier d’environnement Docker"
-    ```bash
-    cp .env.docker.example .env
-    ```
+> [!TIP]
+> **Fichier d’environnement Docker**
+>
+> ```bash
+> cp .env.docker.example .env
+> ```
 
-!!! danger "Secrets"
-    Ne commit jamais `.env`. Ce fichier contient le token Discord et les identifiants SQL.
+> [!CAUTION]
+> **Secrets**
+>
+> Ne commit jamais `.env`.
+> Ce fichier contient le token Discord et les identifiants SQL.
 
 ## Discord
 
@@ -52,8 +57,10 @@ docker compose run --rm rathenafr-discord-bot --deploy
 
 Refais cette commande après tout changement de commande slash. Elle retire aussi les anciennes commandes hors scope du serveur Discord.
 
-!!! tip "Après la refonte"
-    Le redéploiement est nécessaire pour que Discord remplace réellement les anciens registres par les nouveaux packs publics et staff.
+> [!IMPORTANT]
+> **Après la refonte**
+>
+> Le redéploiement est nécessaire pour que Discord remplace réellement les anciens registres par les nouveaux packs publics et staff.
 
 ## Démarrer
 

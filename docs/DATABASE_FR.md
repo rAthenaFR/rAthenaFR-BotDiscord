@@ -8,8 +8,10 @@ Le bot doit fonctionner avec un utilisateur SQL en lecture seule pour toutes les
 GRANT SELECT ON `ragnarok`.* TO 'rathenafr_bot'@'%';
 ```
 
-!!! danger "Droits SQL interdits"
-    Ne donne pas `UPDATE`, `DELETE`, `DROP`, `ALTER` ou `CREATE` au bot pour cette version.
+> [!CAUTION]
+> **Droits SQL interdits**
+>
+> Ne donne pas `UPDATE`, `DELETE`, `DROP`, `ALTER` ou `CREATE` au bot pour cette version.
 
 ## Exception createaccount
 
@@ -74,5 +76,8 @@ Tables optionnelles :
 - `buyingstore_items`
 - `sql_updates`
 
-!!! note "Tables absentes"
-    Certaines installations rAthena ne possèdent pas toutes ces tables. `/db health` affiche les tables présentes, les tables manquantes et les logs détectés.
+> [!NOTE]
+> **Tables absentes**
+>
+> Certaines installations rAthena ne possèdent pas toutes ces tables.
+> `/db health` affiche les tables présentes, les tables manquantes et les logs détectés.

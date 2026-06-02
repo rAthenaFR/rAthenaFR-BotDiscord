@@ -14,8 +14,10 @@ ou avec Docker :
 docker compose run --rm rathenafr-discord-bot --deploy
 ```
 
-!!! note "Registre Discord"
-    Les anciennes commandes sont retirées du registre uniquement après redéploiement.
+> [!NOTE]
+> **Registre Discord**
+>
+> Les anciennes commandes sont retirées du registre uniquement après redéploiement.
 
 ## Erreur SQL
 
@@ -31,8 +33,10 @@ Si `/createaccount` est activée :
 GRANT INSERT ON `ragnarok`.`login` TO 'rathenafr_bot'@'%';
 ```
 
-!!! warning "Droits inutiles"
-    N’ajoute pas `UPDATE` ou `DELETE` pour cette version.
+> [!CAUTION]
+> **Droits inutiles**
+>
+> N’ajoute pas `UPDATE` ou `DELETE` pour cette version.
 
 ## Table manquante
 
@@ -73,5 +77,8 @@ RATHENAFR_GMMSG_MODE=disabled
 
 Passe en `test` pour valider la commande sans envoi.
 
-!!! warning "GameBridge"
-    Le mode `bridge` exige une implémentation GameBridge map-server réelle. L’abstraction existe, mais aucun transport n’est actif par défaut.
+> [!IMPORTANT]
+> **GameBridge**
+>
+> Le mode `bridge` exige une implémentation GameBridge map-server réelle.
+> L’abstraction existe, mais aucun transport n’est actif par défaut.

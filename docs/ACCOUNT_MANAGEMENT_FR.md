@@ -15,8 +15,11 @@ Cette version conserve uniquement `/createaccount` pour la gestion des comptes.
 - Le mot de passe n’est jamais réaffiché par le bot.
 - L’e-mail reste une donnée sensible et ne doit pas être exposé en public, en dehors de la réponse de création prévue.
 
-!!! danger "Données sensibles"
-    Même si `/createaccount` est publique, le mot de passe transite par Discord au moment de la commande. Active cette fonctionnalité uniquement si ce flux est accepté pour ton serveur.
+> [!WARNING]
+> **Données sensibles**
+>
+> Même si `/createaccount` est publique, le mot de passe transite par Discord au moment de la commande.
+> Active cette fonctionnalité uniquement si ce flux est accepté pour ton serveur.
 
 ## Permissions SQL
 
@@ -26,7 +29,3 @@ Pour activer `/createaccount`, ajoute uniquement :
 
 ```sql
 GRANT INSERT ON `ragnarok`.`login` TO 'rathenafr_bot'@'%';
-```
-
-!!! warning "Droits SQL"
-    Ne donne pas `UPDATE` ou `DELETE` pour cette version. Les anciennes commandes de modification ou de suppression de compte ne sont plus dans le registre Discord.
