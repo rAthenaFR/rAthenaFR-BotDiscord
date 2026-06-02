@@ -140,12 +140,12 @@ pub(super) async fn resolve_account(
 pub(super) fn parse_lookup(value: &str) -> std::result::Result<AccountLookup<'_>, String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
-        return Err("Le compte doit etre renseigne.".to_string());
+        return Err("Le compte doit être renseigné.".to_string());
     }
 
     match trimmed.parse::<i64>() {
         Ok(account_id) if account_id > 0 => Ok(AccountLookup::AccountId(account_id)),
-        Ok(_) => Err("L'account_id doit etre strictement positif.".to_string()),
+        Ok(_) => Err("L’account_id doit être strictement positif.".to_string()),
         Err(_) => Ok(AccountLookup::Userid(trimmed)),
     }
 }
@@ -160,9 +160,9 @@ pub(super) fn parse_field(value: &str) -> std::result::Result<AccountManageField
         "logincount" => Ok(AccountManageField::Logincount),
         "sex" => Ok(AccountManageField::Sex),
         field if FORBIDDEN_FIELDS.contains(&field) => Err(format!(
-            "Le champ `{field}` ne peut jamais etre modifie par cette commande."
+            "Le champ `{field}` ne peut jamais être modifié par cette commande."
         )),
-        field => Err(format!("Le champ `{field}` n'est pas autorise.")),
+        field => Err(format!("Le champ `{field}` n’est pas autorisé.")),
     }
 }
 
@@ -177,10 +177,10 @@ pub(super) fn validate_value(
     let trimmed = value.trim();
     let parsed = trimmed
         .parse::<i64>()
-        .map_err(|_| format!("La valeur de `{}` doit etre un entier.", field.name()))?;
+        .map_err(|_| format!("La valeur de `{}` doit être un entier.", field.name()))?;
     if parsed < 0 {
         return Err(format!(
-            "La valeur de `{}` doit etre positive ou nulle.",
+            "La valeur de `{}` doit être positive ou nulle.",
             field.name()
         ));
     }
@@ -194,7 +194,7 @@ pub(super) fn validate_delete_request(
 ) -> std::result::Result<(), String> {
     if !config.delete_enabled {
         return Err(
-            "La desactivation forte de compte est desactivee par configuration.".to_string(),
+            "La désactivation forte de compte est désactivée par configuration.".to_string(),
         );
     }
     if confirm != "SUPPRIMER" {
@@ -214,7 +214,7 @@ pub(super) fn account_label(status: &AccountStatus) -> String {
 
 pub(super) fn summary(status: &AccountStatus) -> String {
     format!(
-        "account_id `{}` | userid `{}` | personnages `{}` | etat `{}` | group_id `{}` | unban_time `{}` | expiration_time `{}`",
+        "account_id `{}` | userid `{}` | personnages `{}` | état `{}` | group_id `{}` | unban_time `{}` | expiration_time `{}`",
         status.account_id,
         sanitize_staff_text(&status.userid),
         status.characters,
@@ -226,7 +226,7 @@ pub(super) fn summary(status: &AccountStatus) -> String {
 }
 
 pub(super) fn edit_result(field: AccountManageField, status: &AccountStatus) -> String {
-    format!("Champ `{}` modifie. {}", field.name(), summary(status))
+    format!("Champ `{}` modifié. {}", field.name(), summary(status))
 }
 
 pub(super) fn ban_result(until: Option<i64>, status: &AccountStatus) -> String {
@@ -237,17 +237,17 @@ pub(super) fn ban_result(until: Option<i64>, status: &AccountStatus) -> String {
                 summary(status)
             )
         }
-        _ => format!("Compte bloque. {}", summary(status)),
+        _ => format!("Compte bloqué. {}", summary(status)),
     }
 }
 
 pub(super) fn unban_result(status: &AccountStatus) -> String {
-    format!("Compte debloque. {}", summary(status))
+    format!("Compte débloqué. {}", summary(status))
 }
 
 pub(super) fn delete_result(status: &AccountStatus) -> String {
     format!(
-        "Desactivation forte appliquee sans suppression physique. {}",
+        "Désactivation forte appliquée sans suppression physique. {}",
         summary(status)
     )
 }
@@ -265,9 +265,9 @@ pub(super) fn safe_sql_error(error: &anyhow::Error) -> String {
     {
         "Table ou colonne rAthena requise absente.".to_string()
     } else if lower.contains("aucun compte") {
-        "Aucun compte n'a ete modifie.".to_string()
+        "Aucun compte n’a été modifié.".to_string()
     } else {
-        "Erreur SQL pendant l'action account-manage.".to_string()
+        "Erreur SQL pendant l’action account-manage.".to_string()
     }
 }
 
@@ -321,7 +321,7 @@ mod tests {
 
         assert_eq!(
             validate_delete_request(&disabled, "SUPPRIMER").unwrap_err(),
-            "La desactivation forte de compte est desactivee par configuration."
+            "La désactivation forte de compte est désactivée par configuration."
         );
         assert!(validate_delete_request(&enabled, "SUPPRIMER").is_ok());
     }

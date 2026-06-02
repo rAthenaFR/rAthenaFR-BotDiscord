@@ -2822,7 +2822,7 @@ impl RAthenaFrDatabase {
         }
 
         if lines.len() == 1 {
-            lines.push("Aucun drop renseigne.".to_string());
+            lines.push("Aucun drop renseigné.".to_string());
         }
 
         Ok(Some(lines))
@@ -3282,7 +3282,7 @@ impl RAthenaFrDatabase {
                     )
                 })
                 .collect(),
-            "Aucun item n'a ete trouve dans le chariot.",
+            "Aucun item n’a été trouvé dans le chariot.",
         ))
     }
 
@@ -3844,9 +3844,9 @@ fn parse_account_manage_i64(value: &str, field: &str) -> Result<i64> {
     let parsed = value
         .trim()
         .parse::<i64>()
-        .with_context(|| format!("valeur invalide pour `login`.`{field}`"))?;
+        .with_context(|| format!("Valeur invalide pour `login`.`{field}`"))?;
     if parsed < 0 {
-        anyhow::bail!("La valeur de `login`.`{field}` doit etre positive ou nulle.");
+        anyhow::bail!("La valeur de `login`.`{field}` doit être positive ou nulle.");
     }
 
     Ok(parsed)

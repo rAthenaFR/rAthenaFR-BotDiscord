@@ -1150,8 +1150,8 @@ impl Handler {
                 .log_account_manage(AccountManageAuditEntry {
                     status: embeds::AccountManageLogStatus::Refused,
                     action,
-                    account: requested_account.as_deref().unwrap_or("non renseigne"),
-                    result: "Role Discord insuffisant.",
+                    account: requested_account.as_deref().unwrap_or("non renseigné"),
+                    result: "Rôle Discord insuffisant.",
                     reason: None,
                 })
                 .await;
@@ -1166,8 +1166,8 @@ impl Handler {
                     context,
                     command,
                     action,
-                    requested_account.as_deref().unwrap_or("non renseigne"),
-                    "La gestion des comptes est desactivee par configuration.",
+                    requested_account.as_deref().unwrap_or("non renseigné"),
+                    "La gestion des comptes est désactivée par configuration.",
                 )
                 .await;
         }
@@ -1183,7 +1183,7 @@ impl Handler {
                 .log_account_manage(AccountManageAuditEntry {
                     status: embeds::AccountManageLogStatus::Refused,
                     action,
-                    account: requested_account.as_deref().unwrap_or("non renseigne"),
+                    account: requested_account.as_deref().unwrap_or("non renseigné"),
                     result: &result,
                     reason: None,
                 })
@@ -1227,7 +1227,7 @@ impl Handler {
             }
             Err(message) => {
                 let account = account_manage::requested_account(&options)
-                    .unwrap_or_else(|| "non renseigne".to_string());
+                    .unwrap_or_else(|| "non renseigné".to_string());
                 return self
                     .reject_account_manage(context, command, "edit", &account, &message)
                     .await;
@@ -1242,7 +1242,7 @@ impl Handler {
                     command,
                     "edit",
                     prepared.lookup,
-                    "Aucun compte exact n'a ete trouve.",
+                    "Aucun compte exact n’a été trouvé.",
                 )
                 .await;
         };
@@ -1283,7 +1283,7 @@ impl Handler {
         self.respond_embed(
             context,
             command,
-            embeds::success_message_embed("Compte modifié", "Le compte a ete modifie.")
+            embeds::success_message_embed("Compte modifié", "Le compte a été modifié.")
                 .field("Action", "`edit`", true)
                 .field("Compte", account_manage::summary(&updated), false)
                 .field("Champ", format!("`{}`", prepared.field.name()), true)
@@ -1312,7 +1312,7 @@ impl Handler {
                     command,
                     "ban",
                     prepared.lookup,
-                    "Aucun compte exact n'a ete trouve.",
+                    "Aucun compte exact n’a été trouvé.",
                 )
                 .await;
         };
@@ -1353,7 +1353,7 @@ impl Handler {
         self.respond_embed(
             context,
             command,
-            embeds::success_message_embed("Compte modifié", "Le compte a ete bloque.")
+            embeds::success_message_embed("Compte modifié", "Le compte a été bloqué.")
                 .field("Action", "`ban`", true)
                 .field("Compte", account_manage::summary(&updated), false)
                 .field(
@@ -1388,7 +1388,7 @@ impl Handler {
                     command,
                     "unban",
                     prepared.lookup,
-                    "Aucun compte exact n'a ete trouve.",
+                    "Aucun compte exact n’a été trouvé.",
                 )
                 .await;
         };
@@ -1430,7 +1430,7 @@ impl Handler {
         self.respond_embed(
             context,
             command,
-            embeds::success_message_embed("Compte modifié", "Le compte a ete debloque.")
+            embeds::success_message_embed("Compte modifié", "Le compte a été débloqué.")
                 .field("Action", "`unban`", true)
                 .field("Compte", account_manage::summary(&updated), false),
             true,
@@ -1452,7 +1452,7 @@ impl Handler {
                 }
                 Err(message) => {
                     let account = account_manage::requested_account(&options)
-                        .unwrap_or_else(|| "non renseigne".to_string());
+                        .unwrap_or_else(|| "non renseigné".to_string());
                     return self
                         .reject_account_manage(context, command, "delete", &account, &message)
                         .await;
@@ -1471,7 +1471,7 @@ impl Handler {
                     command,
                     "delete",
                     &prepared.account_id.to_string(),
-                    "Aucun compte avec cet account_id exact n'a ete trouve.",
+                    "Aucun compte avec cet account_id exact n’a été trouvé.",
                 )
                 .await;
         };
@@ -1521,12 +1521,12 @@ impl Handler {
             command,
             embeds::success_message_embed(
                 "Compte modifié",
-                "Le compte a ete desactive fortement. Aucune ligne `login` n'a ete supprimee.",
+                "Le compte a été désactivé fortement. Aucune ligne `login` n’a été supprimée.",
             )
             .field("Action", "`delete` soft", true)
-            .field("Resume avant action", before_summary, false)
+            .field("Résumé avant action", before_summary, false)
             .field(
-                "Resume apres action",
+                "Résumé après action",
                 account_manage::summary(&updated),
                 false,
             ),

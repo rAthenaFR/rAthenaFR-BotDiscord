@@ -43,7 +43,7 @@ impl<'a> StaffAuditLogger<'a> {
                 action = entry.action,
                 message = entry.message,
                 result = entry.result,
-                "Action staff GMMSG traitee."
+                "Action staff GMMSG traitée."
             );
             return;
         };
@@ -65,7 +65,7 @@ impl<'a> StaffAuditLogger<'a> {
                 action = entry.action,
                 account = entry.account,
                 result = entry.result,
-                "Action staff account-manage traitee."
+                "Action staff account-manage traitée."
             );
             return;
         };
@@ -91,7 +91,7 @@ impl<'a> StaffAuditLogger<'a> {
             )
             .await
         {
-            error!(error = %error, "Impossible d'envoyer le log staff Discord.");
+            error!(error = %error, "Impossible d’envoyer le log staff Discord.");
         }
     }
 }
