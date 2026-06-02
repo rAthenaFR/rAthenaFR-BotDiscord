@@ -1,5 +1,5 @@
 use crate::cache::{BotCache, StatusCacheEntry, TimedCache};
-use crate::config::{AppConfig, StaffRole, TopZenyMode};
+use crate::config::{AppConfig, GameBridgeMode, StaffRole, TopZenyMode};
 use crate::discord::embeds;
 use crate::infra::observability::CommandTimer;
 use crate::rathenafr::{
@@ -9,9 +9,9 @@ use crate::rathenafr::{
 use anyhow::Result;
 use serenity::all::{
     async_trait, ActivityData, ApplicationId, ChannelId, Client, CommandDataOption,
-    CommandDataOptionValue, CommandInteraction, Context, CreateInteractionResponse,
-    CreateInteractionResponseMessage, CreateMessage, EventHandler, GatewayIntents, Interaction,
-    OnlineStatus, Ready,
+    CommandDataOptionValue, CommandInteraction, Context, CreateAllowedMentions,
+    CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EventHandler,
+    GatewayIntents, Interaction, OnlineStatus, Ready,
 };
 use std::future::Future;
 use std::sync::Arc;
@@ -1004,12 +1004,25 @@ impl Handler {
             _ => Err(anyhow::anyhow!("Sous-commande /gmmsg inconnue.")),
         };
 
-        let result_text = match &result {
-            Ok(details) => format!("Résultat : `{details}`"),
-            Err(error) => format!("Résultat : `{}`", error),
+        let (log_status, log_result) = match &result {
+            Ok(details) => (
+                embeds::GmmsgLogStatus::Sent,
+                gmmsg_success_log_result(subcommand, details),
+            ),
+            Err(error) => (
+                embeds::GmmsgLogStatus::Failed,
+                gmmsg_error_log_result(self.state.config.game_bridge.mode, &error.to_string()),
+            ),
         };
-        self.log_staff_action(context, command, subcommand, &message, &result_text)
-            .await;
+        self.log_staff_action(
+            context,
+            command,
+            subcommand,
+            &message,
+            log_status,
+            &log_result,
+        )
+        .await;
 
         match result {
             Ok(details) => {
@@ -1953,6 +1966,7 @@ impl Handler {
         command: &CommandInteraction,
         action: &str,
         message: &str,
+        status: embeds::GmmsgLogStatus,
         result: &str,
     ) {
         let Some(channel_id) = self.state.config.discord.staff_log_channel_id else {
@@ -1966,15 +1980,15 @@ impl Handler {
             return;
         };
 
-        let content = format!(
-            "gmmsg utilisateur={} action={} message=`{}` résultat={}",
-            command.user.id.get(),
-            action,
-            message.replace('@', "@\u{200B}"),
-            result.replace('@', "@\u{200B}")
-        );
+        let embed =
+            embeds::gmmsg_staff_log_embed(status, command.user.id.get(), action, message, result);
         if let Err(error) = ChannelId::new(channel_id)
-            .send_message(&context.http, CreateMessage::new().content(content))
+            .send_message(
+                &context.http,
+                CreateMessage::new()
+                    .embed(embed)
+                    .allowed_mentions(CreateAllowedMentions::new()),
+            )
             .await
         {
             error!(error = %error, "Impossible d’envoyer le log staff Discord.");
@@ -2235,6 +2249,38 @@ fn validate_hex_color(value: &str) -> std::result::Result<String, &'static str> 
     }
 }
 
+fn gmmsg_success_log_result(action: &str, details: &str) -> String {
+    if action == "test" || details.to_ascii_lowercase().contains("mode test") {
+        "Mode test actif : aucun message n’a été envoyé en jeu.".to_string()
+    } else {
+        details.to_string()
+    }
+}
+
+fn gmmsg_error_log_result(mode: GameBridgeMode, error: &str) -> String {
+    if error.contains("discord_gmmsg_queue") && error.contains("absente") {
+        return "La table `discord_gmmsg_queue` est absente.".to_string();
+    }
+
+    if error.contains("non compatibles avec l’encodage Windows-1252") {
+        return "Le message contient des caractères non compatibles avec l’encodage Windows-1252 utilisé par le client en jeu.".to_string();
+    }
+
+    if mode == GameBridgeMode::Disabled && error.contains("Le bridge en jeu n’est pas configuré")
+    {
+        return "GMMSG est désactivé dans la configuration.".to_string();
+    }
+
+    if error.contains("Le bridge en jeu n’est pas configuré")
+        || error.contains("aucune implémentation map-server")
+        || error.contains("bridge actuel")
+    {
+        return "Le bridge en jeu n’est pas configuré.".to_string();
+    }
+
+    error.to_string()
+}
+
 fn trim_discord_message(value: &str) -> String {
     const MAX_EMBED_DESCRIPTION: usize = 3900;
     if value.chars().count() <= MAX_EMBED_DESCRIPTION {
@@ -2451,6 +2497,43 @@ mod tests {
             "user@example.test"
         );
         assert!(validate_account_email(Some("invalid")).is_err());
+    }
+
+    #[test]
+    fn gmmsg_success_log_result_uses_test_wording() {
+        assert_eq!(
+            gmmsg_success_log_result("server", "mode test: Broadcast: bonjour"),
+            "Mode test actif : aucun message n’a été envoyé en jeu."
+        );
+        assert_eq!(
+            gmmsg_success_log_result("server", "Message ajouté à la file d’envoi en jeu."),
+            "Message ajouté à la file d’envoi en jeu."
+        );
+    }
+
+    #[test]
+    fn gmmsg_error_log_result_uses_staff_wording() {
+        assert_eq!(
+            gmmsg_error_log_result(
+                GameBridgeMode::SqlQueue,
+                "La table `discord_gmmsg_queue` est absente. Exécutez le script SQL d’installation du bridge GMMSG."
+            ),
+            "La table `discord_gmmsg_queue` est absente."
+        );
+        assert_eq!(
+            gmmsg_error_log_result(
+                GameBridgeMode::Disabled,
+                "Le bridge en jeu n’est pas configuré."
+            ),
+            "GMMSG est désactivé dans la configuration."
+        );
+        assert_eq!(
+            gmmsg_error_log_result(
+                GameBridgeMode::Bridge,
+                "Le bridge en jeu n’est pas configuré : aucune implémentation map-server n’est active."
+            ),
+            "Le bridge en jeu n’est pas configuré."
+        );
     }
 
     #[test]

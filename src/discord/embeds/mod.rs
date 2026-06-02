@@ -8,7 +8,14 @@ const COLOR_INFO: Colour = Colour::new(0x5865F2);
 const COLOR_PURPLE: Colour = Colour::new(0x9B59B6);
 const EMBED_FIELD_VALUE_LIMIT: usize = 1000;
 const EMBED_LIST_SEPARATOR_LEN: usize = 2;
+const GMMSG_LOG_MESSAGE_LIMIT: usize = 900;
 const COMMAND_DISPLAY_NAME: &str = "rAthena";
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum GmmsgLogStatus {
+    Sent,
+    Failed,
+}
 
 struct LimitedList {
     value: String,
@@ -857,6 +864,54 @@ pub fn error_embed(message: &str) -> CreateEmbed {
     base_embed("Erreur du bot rAthenaFR", message, COLOR_ERROR)
 }
 
+pub fn gmmsg_staff_log_embed(
+    status: GmmsgLogStatus,
+    discord_user_id: u64,
+    action: &str,
+    message: &str,
+    result: &str,
+) -> CreateEmbed {
+    let (title, description, color, result_field) = match status {
+        GmmsgLogStatus::Sent => (
+            "Message GM envoyé",
+            "Un message a été ajouté à la file d’envoi en jeu.",
+            COLOR_SUCCESS,
+            "Résultat",
+        ),
+        GmmsgLogStatus::Failed => (
+            "Message GM non envoyé",
+            "La commande a été traitée, mais le message n’a pas pu être envoyé.",
+            COLOR_ERROR,
+            "Erreur",
+        ),
+    };
+
+    CreateEmbed::new()
+        .title(title)
+        .description(description)
+        .color(color)
+        .field("Utilisateur", format!("ID : <@{}>", discord_user_id), false)
+        .field(
+            "Action",
+            format!("`{}`", sanitize_embed_mentions(action)),
+            true,
+        )
+        .field(
+            "Message",
+            truncate_embed_field(&sanitize_embed_mentions(message), GMMSG_LOG_MESSAGE_LIMIT),
+            false,
+        )
+        .field(
+            result_field,
+            truncate_embed_field(&sanitize_embed_mentions(result), EMBED_FIELD_VALUE_LIMIT),
+            false,
+        )
+        .footer(serenity::all::CreateEmbedFooter::new(
+            "rAthenaFR-BotDiscord • GMMSG",
+        ))
+        .timestamp(Timestamp::now())
+}
+
 fn service_status_lines(services: &[RAthenaFrServiceStatus]) -> String {
     if services.is_empty() {
         return "Aucun service rAthena n’est configuré.".to_string();
@@ -912,6 +967,25 @@ fn footer_text() -> String {
 
 fn brand_text(value: impl Into<String>) -> String {
     value.into().replace("rAthenaFR", COMMAND_DISPLAY_NAME)
+}
+
+fn sanitize_embed_mentions(value: &str) -> String {
+    value
+        .replace("@everyone", "@\u{200B}everyone")
+        .replace("@here", "@\u{200B}here")
+}
+
+fn truncate_embed_field(value: &str, limit: usize) -> String {
+    if value.chars().count() <= limit {
+        return value.to_string();
+    }
+
+    let mut output = value
+        .chars()
+        .take(limit.saturating_sub(1))
+        .collect::<String>();
+    output.push('…');
+    output
 }
 
 fn account_state(value: i64) -> String {
@@ -1175,5 +1249,22 @@ mod tests {
         assert_eq!(list.displayed_count, 1);
         assert_eq!(list.available_count, 2);
         assert!(list_summary(&list, "lignes").contains("les limites de champ des embeds Discord"));
+    }
+
+    #[test]
+    fn gmmsg_log_mentions_are_neutralized() {
+        assert_eq!(
+            sanitize_embed_mentions("@everyone @here test"),
+            "@\u{200B}everyone @\u{200B}here test"
+        );
+    }
+
+    #[test]
+    fn gmmsg_log_message_is_truncated_cleanly() {
+        let message = "a".repeat(GMMSG_LOG_MESSAGE_LIMIT + 20);
+        let truncated = truncate_embed_field(&message, GMMSG_LOG_MESSAGE_LIMIT);
+
+        assert_eq!(truncated.chars().count(), GMMSG_LOG_MESSAGE_LIMIT);
+        assert!(truncated.ends_with('…'));
     }
 }
