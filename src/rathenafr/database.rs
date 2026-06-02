@@ -1,6 +1,6 @@
 use crate::config::{AccountPasswordMode, DatabaseConfig};
 use anyhow::{Context, Result};
-use sqlx::{mysql::MySqlPoolOptions, mysql::MySqlRow, MySql, MySqlPool, Row, Transaction};
+use sqlx::{mysql::MySqlPoolOptions, mysql::MySqlRow, MySqlPool, Row};
 use std::time::Duration;
 
 #[derive(Clone)]
@@ -13,17 +13,42 @@ pub enum DatabaseTable {
     BuyingStoreItems,
     BuyingStores,
     CartInventory,
+    Char,
+    CharLog,
+    CharRegNum,
+    CharRegStr,
+    ChatLog,
+    AtCommandLog,
+    BranchLog,
+    LoginLog,
+    MvpLog,
+    PickLog,
+    ZenyLog,
+    AccRegNum,
+    AccRegStr,
+    Login,
+    Guild,
     GuildAlliance,
     GuildCastle,
     GuildMember,
+    GuildPosition,
     GuildSkill,
     GuildStorage,
     Homunculus,
     Inventory,
+    ItemDb,
+    ItemDbRe,
+    Mail,
+    MailAttachments,
+    MobDb,
+    MobDbRe,
+    MobSkillDb,
     Party,
     Pet,
     Quest,
+    Skill,
     Storage,
+    SqlUpdates,
     VendingItems,
     Vendings,
 }
@@ -34,17 +59,42 @@ impl DatabaseTable {
             Self::BuyingStoreItems => "buyingstore_items",
             Self::BuyingStores => "buyingstores",
             Self::CartInventory => "cart_inventory",
+            Self::Char => "char",
+            Self::CharLog => "charlog",
+            Self::CharRegNum => "char_reg_num",
+            Self::CharRegStr => "char_reg_str",
+            Self::ChatLog => "chatlog",
+            Self::AtCommandLog => "atcommandlog",
+            Self::BranchLog => "branchlog",
+            Self::LoginLog => "loginlog",
+            Self::MvpLog => "mvplog",
+            Self::PickLog => "picklog",
+            Self::ZenyLog => "zenylog",
+            Self::AccRegNum => "acc_reg_num",
+            Self::AccRegStr => "acc_reg_str",
+            Self::Login => "login",
+            Self::Guild => "guild",
             Self::GuildAlliance => "guild_alliance",
             Self::GuildCastle => "guild_castle",
             Self::GuildMember => "guild_member",
+            Self::GuildPosition => "guild_position",
             Self::GuildSkill => "guild_skill",
             Self::GuildStorage => "guild_storage",
             Self::Homunculus => "homunculus",
             Self::Inventory => "inventory",
+            Self::ItemDb => "item_db",
+            Self::ItemDbRe => "item_db_re",
+            Self::Mail => "mail",
+            Self::MailAttachments => "mail_attachments",
+            Self::MobDb => "mob_db",
+            Self::MobDbRe => "mob_db_re",
+            Self::MobSkillDb => "mob_skill_db",
             Self::Party => "party",
             Self::Pet => "pet",
             Self::Quest => "quest",
+            Self::Skill => "skill",
             Self::Storage => "storage",
+            Self::SqlUpdates => "sql_updates",
             Self::VendingItems => "vending_items",
             Self::Vendings => "vendings",
         }
@@ -83,8 +133,62 @@ const MONSTER_DISPLAY_COLUMN_CANDIDATES: &[&str] = &[
 ];
 const MONSTER_LEVEL_COLUMN_CANDIDATES: &[&str] = &["LV", "level", "lv"];
 const MONSTER_HP_COLUMN_CANDIDATES: &[&str] = &["HP", "hp"];
-const ACCOUNT_DELETE_ACCOUNT_ID_SKIP_TABLES: &[&str] = &["char", "login"];
-const ACCOUNT_DELETE_CHAR_ID_SKIP_TABLES: &[&str] = &["char", "guild"];
+const RELEASE_REQUIRED_TABLES: &[DatabaseTable] = &[
+    DatabaseTable::Login,
+    DatabaseTable::Char,
+    DatabaseTable::Guild,
+    DatabaseTable::GuildMember,
+];
+const RELEASE_OPTIONAL_TABLES: &[DatabaseTable] = &[
+    DatabaseTable::GuildPosition,
+    DatabaseTable::GuildSkill,
+    DatabaseTable::GuildCastle,
+    DatabaseTable::GuildStorage,
+    DatabaseTable::Party,
+    DatabaseTable::Inventory,
+    DatabaseTable::CartInventory,
+    DatabaseTable::Storage,
+    DatabaseTable::Mail,
+    DatabaseTable::MailAttachments,
+    DatabaseTable::Skill,
+    DatabaseTable::Quest,
+    DatabaseTable::Pet,
+    DatabaseTable::Homunculus,
+    DatabaseTable::CharRegNum,
+    DatabaseTable::CharRegStr,
+    DatabaseTable::AccRegNum,
+    DatabaseTable::AccRegStr,
+    DatabaseTable::ItemDb,
+    DatabaseTable::ItemDbRe,
+    DatabaseTable::MobDb,
+    DatabaseTable::MobDbRe,
+    DatabaseTable::MobSkillDb,
+    DatabaseTable::Vendings,
+    DatabaseTable::VendingItems,
+    DatabaseTable::BuyingStores,
+    DatabaseTable::BuyingStoreItems,
+    DatabaseTable::SqlUpdates,
+];
+const RELEASE_LOG_TABLES: &[DatabaseTable] = &[
+    DatabaseTable::MvpLog,
+    DatabaseTable::PickLog,
+    DatabaseTable::ZenyLog,
+    DatabaseTable::LoginLog,
+    DatabaseTable::ChatLog,
+    DatabaseTable::AtCommandLog,
+    DatabaseTable::BranchLog,
+    DatabaseTable::CharLog,
+];
+const ITEM_DETAIL_BUY_COLUMNS: &[&str] = &["buy", "price_buy"];
+const ITEM_DETAIL_SELL_COLUMNS: &[&str] = &["sell", "price_sell"];
+const ITEM_DETAIL_WEIGHT_COLUMNS: &[&str] = &["weight"];
+const ITEM_DETAIL_ATTACK_COLUMNS: &[&str] = &["atk", "attack"];
+const ITEM_DETAIL_DEFENSE_COLUMNS: &[&str] = &["def", "defense"];
+const ITEM_DETAIL_SLOTS_COLUMNS: &[&str] = &["slots", "slot"];
+const MOB_RACE_COLUMNS: &[&str] = &["race", "Race"];
+const MOB_ELEMENT_COLUMNS: &[&str] = &["element", "Element"];
+const MOB_SIZE_COLUMNS: &[&str] = &["scale", "size", "Scale"];
+const MOB_MVP_EXP_COLUMNS: &[&str] = &["mexp", "MEXP", "mvp_exp", "MvpExp"];
 
 #[derive(Debug, Clone)]
 struct AvailableColumns {
@@ -170,6 +274,121 @@ fn parse_search_id(query: &str) -> Option<i64> {
     }
 
     trimmed.parse::<i64>().ok().filter(|value| *value > 0)
+}
+
+fn optional_signed_select(columns: &AvailableColumns, candidates: &[&str], alias: &str) -> String {
+    columns
+        .first(candidates)
+        .map(|column| format!("{} AS {alias}", cast_column_as_signed(&column)))
+        .unwrap_or_else(|| format!("NULL AS {alias}"))
+}
+
+fn optional_char_select(columns: &AvailableColumns, candidates: &[&str], alias: &str) -> String {
+    columns
+        .first(candidates)
+        .map(|column| format!("{} AS {alias}", cast_column_as_char(&column)))
+        .unwrap_or_else(|| format!("NULL AS {alias}"))
+}
+
+fn find_column_dynamic(columns: &AvailableColumns, candidates: &[String]) -> Option<String> {
+    candidates.iter().find_map(|candidate| {
+        columns
+            .names
+            .iter()
+            .find(|name| name.eq_ignore_ascii_case(candidate))
+            .cloned()
+    })
+}
+
+fn drop_column_pairs(columns: &AvailableColumns) -> Vec<(String, Option<String>, String)> {
+    let mut pairs = Vec::new();
+
+    for index in 1..=10 {
+        let id_candidates = vec![
+            format!("Drop{index}id"),
+            format!("Drop{index}ID"),
+            format!("drop{index}id"),
+            format!("drop{index}_id"),
+        ];
+        let rate_candidates = vec![
+            format!("Drop{index}per"),
+            format!("Drop{index}rate"),
+            format!("drop{index}per"),
+            format!("drop{index}_rate"),
+        ];
+
+        if let Some(id_column) = find_column_dynamic(columns, &id_candidates) {
+            pairs.push((
+                id_column,
+                find_column_dynamic(columns, &rate_candidates),
+                format!("Drop {index}"),
+            ));
+        }
+    }
+
+    for index in 1..=3 {
+        let id_candidates = vec![
+            format!("MvpDrop{index}id"),
+            format!("MVPDrop{index}id"),
+            format!("MvpDrop{index}ID"),
+            format!("mvpdrop{index}id"),
+            format!("mvp_drop{index}_id"),
+        ];
+        let rate_candidates = vec![
+            format!("MvpDrop{index}per"),
+            format!("MVPDrop{index}per"),
+            format!("mvpdrop{index}per"),
+            format!("mvp_drop{index}_rate"),
+        ];
+
+        if let Some(id_column) = find_column_dynamic(columns, &id_candidates) {
+            pairs.push((
+                id_column,
+                find_column_dynamic(columns, &rate_candidates),
+                format!("MVP drop {index}"),
+            ));
+        }
+    }
+
+    pairs
+}
+
+fn format_drop_rate(rate: Option<i64>) -> String {
+    match rate {
+        Some(value) if value > 0 => format!("{} ({:.2}%)", value, value as f64 / 100.0),
+        Some(value) => value.to_string(),
+        None => "taux inconnu".to_string(),
+    }
+}
+
+fn is_sensitive_column(column_name: &str) -> bool {
+    let lower = column_name.to_ascii_lowercase();
+    lower.contains("password")
+        || lower.contains("user_pass")
+        || lower.contains("hash")
+        || lower == "email"
+}
+
+fn mask_sensitive_value(column_name: &str, value: String) -> String {
+    if !column_name.to_ascii_lowercase().contains("ip") {
+        return value;
+    }
+
+    let mut parts = value.split('.').collect::<Vec<_>>();
+    if parts.len() == 4 {
+        parts[3] = "x";
+        return parts.join(".");
+    }
+
+    "ip masquée".to_string()
+}
+
+fn join_limited_lines(lines: Vec<String>, empty_message: &str) -> Vec<String> {
+    if lines.is_empty() {
+        vec![empty_message.to_string()]
+    } else {
+        lines
+    }
 }
 
 fn item_search_entry_from_row(row: MySqlRow) -> Result<ItemSearchEntry> {
@@ -273,7 +492,7 @@ impl RAthenaFrDatabase {
         Ok(None)
     }
 
-    async fn table_exists(&self, table_name: &str) -> Result<bool> {
+    pub async fn table_exists(&self, table_name: &str) -> Result<bool> {
         let row = sqlx::query(
             r#"
             SELECT CAST(COUNT(*) AS SIGNED) AS table_count
@@ -338,7 +557,7 @@ impl RAthenaFrDatabase {
         .bind(table_name)
         .fetch_all(&self.pool)
         .await
-        .with_context(|| format!("list columns for rAthena table {table_name}"))?;
+        .with_context(|| format!("lecture des colonnes de la table rAthena {table_name}"))?;
 
         let names = rows
             .into_iter()
@@ -469,7 +688,7 @@ impl RAthenaFrDatabase {
         .bind(limit)
         .fetch_all(&self.pool)
         .await
-        .context("fetch online characters")?;
+        .context("récupération des personnages connectés")?;
 
         rows.into_iter()
             .map(|row| {
@@ -509,7 +728,7 @@ impl RAthenaFrDatabase {
         .bind(limit)
         .fetch_all(&self.pool)
         .await
-        .context("fetch top characters")?;
+        .context("récupération du classement des personnages")?;
 
         rows.into_iter()
             .enumerate()
@@ -550,7 +769,7 @@ impl RAthenaFrDatabase {
         .bind(limit)
         .fetch_all(&self.pool)
         .await
-        .context("fetch top zeny characters")?;
+        .context("récupération du classement zeny")?;
 
         rows.into_iter()
             .enumerate()
@@ -635,11 +854,11 @@ impl RAthenaFrDatabase {
             items: self
                 .search_items(query, limit)
                 .await
-                .context("search items for combined search")?,
+                .context("recherche d’items pour la recherche globale")?,
             monsters: self
                 .search_monsters(query, limit)
                 .await
-                .context("search monsters for combined search")?,
+                .context("recherche de monstres pour la recherche globale")?,
         })
     }
 
@@ -759,7 +978,7 @@ impl RAthenaFrDatabase {
             .bind(limit)
             .fetch_all(&self.pool)
             .await
-            .with_context(|| format!("search items in {table_name}"))?;
+            .with_context(|| format!("recherche d’items dans {table_name}"))?;
 
         rows.into_iter().map(item_search_entry_from_row).collect()
     }
@@ -802,7 +1021,7 @@ impl RAthenaFrDatabase {
             .bind(item_id)
             .fetch_all(&self.pool)
             .await
-            .with_context(|| format!("search item id {item_id} in {table_name}"))?;
+            .with_context(|| format!("recherche de l’item ID {item_id} dans {table_name}"))?;
 
         rows.into_iter().map(item_search_entry_from_row).collect()
     }
@@ -939,7 +1158,7 @@ impl RAthenaFrDatabase {
             .bind(limit)
             .fetch_all(&self.pool)
             .await
-            .with_context(|| format!("search monsters in {table_name}"))?;
+            .with_context(|| format!("recherche de monstres dans {table_name}"))?;
 
         rows.into_iter()
             .map(monster_search_entry_from_row)
@@ -996,7 +1215,7 @@ impl RAthenaFrDatabase {
             .bind(monster_id)
             .fetch_all(&self.pool)
             .await
-            .with_context(|| format!("search monster id {monster_id} in {table_name}"))?;
+            .with_context(|| format!("recherche du monstre ID {monster_id} dans {table_name}"))?;
 
         rows.into_iter()
             .map(monster_search_entry_from_row)
@@ -1073,7 +1292,7 @@ impl RAthenaFrDatabase {
         .bind(limit)
         .fetch_all(&self.pool)
         .await
-        .context("fetch guild ranking")?;
+        .context("récupération du classement des guildes")?;
 
         rows.into_iter()
             .map(|row| {
@@ -1169,7 +1388,7 @@ impl RAthenaFrDatabase {
         .bind(limit)
         .fetch_all(&self.pool)
         .await
-        .context("fetch guild members")?;
+        .context("récupération des membres de guilde")?;
 
         rows.into_iter()
             .map(|row| {
@@ -1209,7 +1428,7 @@ impl RAthenaFrDatabase {
         .bind(limit)
         .fetch_all(&self.pool)
         .await
-        .context("fetch class distribution")?;
+        .context("récupération de la répartition des classes")?;
 
         rows.into_iter()
             .enumerate()
@@ -1251,7 +1470,7 @@ impl RAthenaFrDatabase {
         .bind(limit)
         .fetch_all(&self.pool)
         .await
-        .context("fetch map statistics")?;
+        .context("récupération des statistiques de maps")?;
 
         rows.into_iter()
             .enumerate()
@@ -1295,7 +1514,7 @@ impl RAthenaFrDatabase {
         .bind(limit)
         .fetch_all(&self.pool)
         .await
-        .context("fetch online map characters")?;
+        .context("récupération des personnages connectés sur la map")?;
 
         rows.into_iter()
             .map(|row| {
@@ -1383,7 +1602,7 @@ impl RAthenaFrDatabase {
         .bind(limit)
         .fetch_all(&self.pool)
         .await
-        .context("fetch party members")?;
+        .context("récupération des membres du groupe")?;
 
         rows.into_iter()
             .map(|row| {
@@ -1533,7 +1752,7 @@ impl RAthenaFrDatabase {
         .bind(group_threshold)
         .fetch_one(&self.pool)
         .await
-        .context("fetch zeny summary")?;
+        .context("récupération du résumé zeny")?;
 
         Ok(ZenySummary {
             total_zeny: row.try_get("total_zeny")?,
@@ -1562,7 +1781,7 @@ impl RAthenaFrDatabase {
         .bind(limit)
         .fetch_all(&self.pool)
         .await
-        .context("fetch castle list")?;
+        .context("récupération de la liste des châteaux")?;
 
         rows.into_iter()
             .map(|row| {
@@ -1601,7 +1820,7 @@ impl RAthenaFrDatabase {
         .bind(castle_id)
         .fetch_optional(&self.pool)
         .await
-        .context("fetch castle details")?;
+        .context("récupération du détail du château")?;
 
         match row {
             Some(row) => Ok(Some(CastleDetails {
@@ -1644,7 +1863,7 @@ impl RAthenaFrDatabase {
         .bind(limit)
         .fetch_all(&self.pool)
         .await
-        .context("fetch guild alliances")?;
+        .context("récupération des alliances de guilde")?;
 
         rows.into_iter()
             .map(|row| {
@@ -1679,7 +1898,7 @@ impl RAthenaFrDatabase {
         .bind(limit)
         .fetch_all(&self.pool)
         .await
-        .context("fetch guild skills")?;
+        .context("récupération des compétences de guilde")?;
 
         rows.into_iter()
             .map(|row| {
@@ -1717,7 +1936,7 @@ impl RAthenaFrDatabase {
         .bind(limit)
         .fetch_all(&self.pool)
         .await
-        .context("fetch top homunculus entries")?;
+        .context("récupération du classement des homoncules")?;
 
         rows.into_iter()
             .enumerate()
@@ -1757,7 +1976,7 @@ impl RAthenaFrDatabase {
         .bind(limit)
         .fetch_all(&self.pool)
         .await
-        .context("fetch top pet entries")?;
+        .context("récupération du classement des familiers")?;
 
         rows.into_iter()
             .enumerate()
@@ -1793,7 +2012,7 @@ impl RAthenaFrDatabase {
         .bind(group_threshold)
         .fetch_one(&self.pool)
         .await
-        .context("fetch quest statistics")?;
+        .context("récupération des statistiques de quête")?;
 
         Ok(QuestStats {
             quest_id,
@@ -1833,7 +2052,7 @@ impl RAthenaFrDatabase {
         .bind(limit)
         .fetch_all(&self.pool)
         .await
-        .context("fetch account characters")?;
+        .context("récupération des personnages du compte")?;
 
         rows.into_iter()
             .map(|row| {
@@ -1889,7 +2108,7 @@ impl RAthenaFrDatabase {
         .bind(account_id)
         .fetch_optional(&self.pool)
         .await
-        .context("fetch account status")?;
+        .context("récupération du statut du compte")?;
 
         match row {
             Some(row) => Ok(Some(AccountStatus {
@@ -1951,7 +2170,7 @@ impl RAthenaFrDatabase {
         .bind(offset)
         .fetch_all(&self.pool)
         .await
-        .context("fetch account list")?;
+        .context("récupération de la liste des comptes")?;
 
         let entries = rows
             .into_iter()
@@ -2040,583 +2259,6 @@ impl RAthenaFrDatabase {
         Ok(account_count > 0)
     }
 
-    pub async fn update_account(
-        &self,
-        account_id: i64,
-        update: AccountUpdateRequest,
-        password_mode: AccountPasswordMode,
-    ) -> Result<AccountUpdateResult> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .context("start account update transaction")?;
-
-        let row = sqlx::query(
-            r#"
-            SELECT userid
-            FROM `login`
-            WHERE account_id = ?
-            FOR UPDATE
-            "#,
-        )
-        .bind(account_id)
-        .fetch_optional(&mut *tx)
-        .await
-        .context("fetch account before update")?;
-
-        let Some(row) = row else {
-            tx.commit()
-                .await
-                .context("commit missing account update transaction")?;
-            return Ok(AccountUpdateResult::NotFound { account_id });
-        };
-
-        let current_userid: String = row.try_get("userid")?;
-        let mut resulting_userid = current_userid.clone();
-        let mut changed_fields = Vec::new();
-
-        if let Some(userid) = update.userid {
-            let existing = sqlx::query(
-                r#"
-                SELECT CAST(COUNT(*) AS SIGNED) AS account_count
-                FROM `login`
-                WHERE userid = ?
-                  AND account_id <> ?
-                "#,
-            )
-            .bind(&userid)
-            .bind(account_id)
-            .fetch_one(&mut *tx)
-            .await
-            .context("check updated account username availability")?;
-
-            let account_count: i64 = existing.try_get("account_count")?;
-            if account_count > 0 {
-                tx.commit()
-                    .await
-                    .context("commit refused account update transaction")?;
-                return Ok(AccountUpdateResult::UsernameAlreadyExists { account_id, userid });
-            }
-
-            sqlx::query(
-                r#"
-                UPDATE `login`
-                SET userid = ?
-                WHERE account_id = ?
-                LIMIT 1
-                "#,
-            )
-            .bind(&userid)
-            .bind(account_id)
-            .execute(&mut *tx)
-            .await
-            .context("update account username")?;
-
-            resulting_userid = userid;
-            changed_fields.push("Login".to_string());
-        }
-
-        if let Some(password) = update.password {
-            let sql = match password_mode {
-                AccountPasswordMode::Plain => {
-                    r#"
-                    UPDATE `login`
-                    SET user_pass = ?
-                    WHERE account_id = ?
-                    LIMIT 1
-                    "#
-                }
-                AccountPasswordMode::Md5 => {
-                    r#"
-                    UPDATE `login`
-                    SET user_pass = MD5(?)
-                    WHERE account_id = ?
-                    LIMIT 1
-                    "#
-                }
-            };
-
-            sqlx::query(sql)
-                .bind(password)
-                .bind(account_id)
-                .execute(&mut *tx)
-                .await
-                .context("update account password")?;
-
-            changed_fields.push("Mot de passe".to_string());
-        }
-
-        if let Some(sex) = update.sex {
-            sqlx::query(
-                r#"
-                UPDATE `login`
-                SET sex = ?
-                WHERE account_id = ?
-                LIMIT 1
-                "#,
-            )
-            .bind(sex)
-            .bind(account_id)
-            .execute(&mut *tx)
-            .await
-            .context("update account sex")?;
-
-            changed_fields.push("Sexe".to_string());
-        }
-
-        if let Some(birthdate) = update.birthdate {
-            sqlx::query(
-                r#"
-                UPDATE `login`
-                SET birthdate = ?
-                WHERE account_id = ?
-                LIMIT 1
-                "#,
-            )
-            .bind(birthdate)
-            .bind(account_id)
-            .execute(&mut *tx)
-            .await
-            .context("update account birthdate")?;
-
-            changed_fields.push("Date de naissance".to_string());
-        }
-
-        if let Some(email) = update.email {
-            sqlx::query(
-                r#"
-                UPDATE `login`
-                SET email = ?
-                WHERE account_id = ?
-                LIMIT 1
-                "#,
-            )
-            .bind(email)
-            .bind(account_id)
-            .execute(&mut *tx)
-            .await
-            .context("update account email")?;
-
-            changed_fields.push("Email".to_string());
-        }
-
-        if let Some(group_id) = update.group_id {
-            sqlx::query(
-                r#"
-                UPDATE `login`
-                SET group_id = ?
-                WHERE account_id = ?
-                LIMIT 1
-                "#,
-            )
-            .bind(group_id)
-            .bind(account_id)
-            .execute(&mut *tx)
-            .await
-            .context("update account group_id")?;
-
-            changed_fields.push("Groupe".to_string());
-        }
-
-        if let Some(state) = update.state {
-            sqlx::query(
-                r#"
-                UPDATE `login`
-                SET state = ?
-                WHERE account_id = ?
-                LIMIT 1
-                "#,
-            )
-            .bind(state)
-            .bind(account_id)
-            .execute(&mut *tx)
-            .await
-            .context("update account state")?;
-
-            changed_fields.push("État".to_string());
-        }
-
-        if let Some(unban_time) = update.unban_time {
-            sqlx::query(
-                r#"
-                UPDATE `login`
-                SET unban_time = ?
-                WHERE account_id = ?
-                LIMIT 1
-                "#,
-            )
-            .bind(unban_time)
-            .bind(account_id)
-            .execute(&mut *tx)
-            .await
-            .context("update account unban_time")?;
-
-            changed_fields.push("Fin de bannissement".to_string());
-        }
-
-        if let Some(expiration_time) = update.expiration_time {
-            sqlx::query(
-                r#"
-                UPDATE `login`
-                SET expiration_time = ?
-                WHERE account_id = ?
-                LIMIT 1
-                "#,
-            )
-            .bind(expiration_time)
-            .bind(account_id)
-            .execute(&mut *tx)
-            .await
-            .context("update account expiration_time")?;
-
-            changed_fields.push("Expiration".to_string());
-        }
-
-        if let Some(character_slots) = update.character_slots {
-            sqlx::query(
-                r#"
-                UPDATE `login`
-                SET character_slots = ?
-                WHERE account_id = ?
-                LIMIT 1
-                "#,
-            )
-            .bind(character_slots)
-            .bind(account_id)
-            .execute(&mut *tx)
-            .await
-            .context("update account character_slots")?;
-
-            changed_fields.push("Slots personnages".to_string());
-        }
-
-        tx.commit()
-            .await
-            .context("commit account update transaction")?;
-
-        Ok(AccountUpdateResult::Updated {
-            account_id,
-            userid: resulting_userid,
-            changed_fields,
-        })
-    }
-
-    pub async fn delete_account_completely(&self, account_id: i64) -> Result<AccountDeleteResult> {
-        let account_id_tables = self.table_names_with_column("account_id").await?;
-        let char_id_tables = self.table_names_with_column("char_id").await?;
-        let friend_id_tables = self.friend_relation_tables().await?;
-        let has_guild_owner_column = self.table_has_columns("guild", &["char_id"]).await?;
-        let has_mail_character_columns = self
-            .table_has_columns("mail", &["send_id", "dest_id"])
-            .await?;
-        let has_vending_items = self
-            .table_has_columns("vending_items", &["vending_id"])
-            .await?
-            && self
-                .table_has_columns("vendings", &["id", "char_id"])
-                .await?;
-        let has_buyingstore_items = self
-            .table_has_columns("buyingstore_items", &["buyingstore_id"])
-            .await?
-            && self
-                .table_has_columns("buyingstores", &["id", "char_id"])
-                .await?;
-
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .context("start full account delete transaction")?;
-
-        let row = sqlx::query(
-            r#"
-            SELECT
-                l.userid,
-                (
-                    SELECT CAST(COUNT(*) AS SIGNED)
-                    FROM `char` c
-                    WHERE c.account_id = l.account_id
-                ) AS characters
-            FROM `login` l
-            WHERE l.account_id = ?
-            FOR UPDATE
-            "#,
-        )
-        .bind(account_id)
-        .fetch_optional(&mut *tx)
-        .await
-        .context("fetch account before full delete")?;
-
-        let Some(row) = row else {
-            tx.commit()
-                .await
-                .context("commit missing account full delete transaction")?;
-            return Ok(AccountDeleteResult::NotFound { account_id });
-        };
-
-        let userid: String = row.try_get("userid")?;
-        let characters: i64 = row.try_get("characters")?;
-
-        if has_guild_owner_column {
-            let row = sqlx::query(
-                r#"
-                SELECT CAST(COUNT(*) AS SIGNED) AS owned_guilds
-                FROM `guild`
-                WHERE char_id IN (
-                    SELECT char_id
-                    FROM `char`
-                    WHERE account_id = ?
-                )
-                "#,
-            )
-            .bind(account_id)
-            .fetch_one(&mut *tx)
-            .await
-            .context("count owned guilds before full account delete")?;
-
-            let guilds: i64 = row.try_get("owned_guilds")?;
-            if guilds > 0 {
-                tx.commit()
-                    .await
-                    .context("commit refused full account delete transaction")?;
-                return Ok(AccountDeleteResult::HasGuildOwnership {
-                    account_id,
-                    userid,
-                    guilds,
-                });
-            }
-        }
-
-        let mut deleted_rows = 0;
-
-        if has_vending_items {
-            deleted_rows += self
-                .delete_vending_items_for_account(&mut tx, account_id)
-                .await?;
-        }
-
-        if has_buyingstore_items {
-            deleted_rows += self
-                .delete_buyingstore_items_for_account(&mut tx, account_id)
-                .await?;
-        }
-
-        if has_mail_character_columns {
-            deleted_rows += self
-                .delete_character_relation_rows(&mut tx, "mail", "send_id", account_id)
-                .await?;
-            deleted_rows += self
-                .delete_character_relation_rows(&mut tx, "mail", "dest_id", account_id)
-                .await?;
-        }
-
-        for table_name in friend_id_tables {
-            deleted_rows += self
-                .delete_character_relation_rows(&mut tx, &table_name, "friend_id", account_id)
-                .await?;
-        }
-
-        for table_name in char_id_tables {
-            if contains_table_name(ACCOUNT_DELETE_CHAR_ID_SKIP_TABLES, &table_name) {
-                continue;
-            }
-
-            deleted_rows += self
-                .delete_character_relation_rows(&mut tx, &table_name, "char_id", account_id)
-                .await?;
-        }
-
-        for table_name in account_id_tables {
-            if contains_table_name(ACCOUNT_DELETE_ACCOUNT_ID_SKIP_TABLES, &table_name) {
-                continue;
-            }
-
-            deleted_rows += self
-                .delete_account_relation_rows(&mut tx, &table_name, account_id)
-                .await?;
-        }
-
-        deleted_rows += sqlx::query(
-            r#"
-            DELETE FROM `char`
-            WHERE account_id = ?
-            "#,
-        )
-        .bind(account_id)
-        .execute(&mut *tx)
-        .await
-        .context("delete account characters")?
-        .rows_affected();
-
-        deleted_rows += sqlx::query(
-            r#"
-            DELETE FROM `login`
-            WHERE account_id = ?
-            LIMIT 1
-            "#,
-        )
-        .bind(account_id)
-        .execute(&mut *tx)
-        .await
-        .context("delete account login")?
-        .rows_affected();
-
-        tx.commit()
-            .await
-            .context("commit full account delete transaction")?;
-
-        Ok(AccountDeleteResult::Deleted {
-            account_id,
-            userid,
-            characters,
-            deleted_rows,
-        })
-    }
-
-    async fn table_names_with_column(&self, column_name: &str) -> Result<Vec<String>> {
-        let rows = sqlx::query(
-            r#"
-            SELECT c.table_name
-            FROM information_schema.columns c
-            INNER JOIN information_schema.tables t
-              ON t.table_schema = c.table_schema
-             AND t.table_name = c.table_name
-            WHERE c.table_schema = DATABASE()
-              AND c.column_name = ?
-              AND t.table_type = 'BASE TABLE'
-            ORDER BY c.table_name ASC
-            "#,
-        )
-        .bind(column_name)
-        .fetch_all(&self.pool)
-        .await
-        .with_context(|| format!("list rAthena tables with column {column_name}"))?;
-
-        rows.into_iter()
-            .map(|row| row.try_get("table_name").map_err(Into::into))
-            .collect()
-    }
-
-    async fn friend_relation_tables(&self) -> Result<Vec<String>> {
-        let mut tables = Vec::new();
-
-        for table_name in self.table_names_with_column("friend_id").await? {
-            if self
-                .table_has_columns(&table_name, &["char_id", "friend_id"])
-                .await?
-            {
-                tables.push(table_name);
-            }
-        }
-
-        Ok(tables)
-    }
-
-    async fn delete_vending_items_for_account(
-        &self,
-        tx: &mut Transaction<'_, MySql>,
-        account_id: i64,
-    ) -> Result<u64> {
-        let result = sqlx::query(
-            r#"
-            DELETE vi
-            FROM `vending_items` vi
-            INNER JOIN `vendings` v ON v.id = vi.vending_id
-            WHERE v.char_id IN (
-                SELECT char_id
-                FROM `char`
-                WHERE account_id = ?
-            )
-            "#,
-        )
-        .bind(account_id)
-        .execute(&mut **tx)
-        .await
-        .context("delete vending items for account")?;
-
-        Ok(result.rows_affected())
-    }
-
-    async fn delete_buyingstore_items_for_account(
-        &self,
-        tx: &mut Transaction<'_, MySql>,
-        account_id: i64,
-    ) -> Result<u64> {
-        let result = sqlx::query(
-            r#"
-            DELETE bsi
-            FROM `buyingstore_items` bsi
-            INNER JOIN `buyingstores` bs ON bs.id = bsi.buyingstore_id
-            WHERE bs.char_id IN (
-                SELECT char_id
-                FROM `char`
-                WHERE account_id = ?
-            )
-            "#,
-        )
-        .bind(account_id)
-        .execute(&mut **tx)
-        .await
-        .context("delete buying store items for account")?;
-
-        Ok(result.rows_affected())
-    }
-
-    async fn delete_character_relation_rows(
-        &self,
-        tx: &mut Transaction<'_, MySql>,
-        table_name: &str,
-        column_name: &str,
-        account_id: i64,
-    ) -> Result<u64> {
-        let sql = format!(
-            r#"
-            DELETE FROM {}
-            WHERE {} IN (
-                SELECT char_id
-                FROM `char`
-                WHERE account_id = ?
-            )
-            "#,
-            quote_identifier(table_name),
-            quote_identifier(column_name),
-        );
-
-        let result = sqlx::query(&sql)
-            .bind(account_id)
-            .execute(&mut **tx)
-            .await
-            .with_context(|| {
-                format!("delete {table_name}.{column_name} rows for account {account_id}")
-            })?;
-
-        Ok(result.rows_affected())
-    }
-
-    async fn delete_account_relation_rows(
-        &self,
-        tx: &mut Transaction<'_, MySql>,
-        table_name: &str,
-        account_id: i64,
-    ) -> Result<u64> {
-        let sql = format!(
-            r#"
-            DELETE FROM {}
-            WHERE `account_id` = ?
-            "#,
-            quote_identifier(table_name),
-        );
-
-        let result = sqlx::query(&sql)
-            .bind(account_id)
-            .execute(&mut **tx)
-            .await
-            .with_context(|| format!("delete {table_name}.account_id rows for account"))?;
-
-        Ok(result.rows_affected())
-    }
-
     pub async fn character_quests(
         &self,
         character_name: &str,
@@ -2642,7 +2284,7 @@ impl RAthenaFrDatabase {
         .bind(limit)
         .fetch_all(&self.pool)
         .await
-        .context("fetch character quests")?;
+        .context("récupération des quêtes du personnage")?;
 
         rows.into_iter()
             .map(|row| {
@@ -2710,7 +2352,7 @@ impl RAthenaFrDatabase {
         .bind(limit)
         .fetch_all(&self.pool)
         .await
-        .context("fetch character inventory items")?;
+        .context("récupération des items d’inventaire du personnage")?;
 
         rows.into_iter()
             .map(|row| {
@@ -2748,7 +2390,7 @@ impl RAthenaFrDatabase {
         .bind(item_id)
         .fetch_one(&self.pool)
         .await
-        .context("count item across rAthenaFR inventory tables")?;
+        .context("comptage de l’item dans les tables d’inventaire rAthenaFR")?;
 
         let inventory_amount = row.try_get("inventory_amount")?;
         let cart_amount = row.try_get("cart_amount")?;
@@ -2824,7 +2466,7 @@ impl RAthenaFrDatabase {
         .bind(limit)
         .fetch_all(&self.pool)
         .await
-        .context("fetch item owners")?;
+        .context("récupération des propriétaires d’item")?;
 
         rows.into_iter()
             .map(|row| {
@@ -2868,7 +2510,7 @@ impl RAthenaFrDatabase {
         .bind(limit)
         .fetch_all(&self.pool)
         .await
-        .context("fetch ban list")?;
+        .context("récupération de la liste des bannissements")?;
 
         rows.into_iter()
             .map(|row| {
@@ -2917,7 +2559,7 @@ impl RAthenaFrDatabase {
         .bind(limit)
         .fetch_all(&self.pool)
         .await
-        .context("fetch vending sellers")?;
+        .context("récupération des vendeurs vending")?;
 
         rows.into_iter()
             .map(|row| {
@@ -2964,7 +2606,7 @@ impl RAthenaFrDatabase {
         .bind(limit)
         .fetch_all(&self.pool)
         .await
-        .context("fetch buying store buyers")?;
+        .context("récupération des acheteurs buying store")?;
 
         rows.into_iter()
             .map(|row| {
@@ -3056,7 +2698,7 @@ impl RAthenaFrDatabase {
         .bind(group_threshold)
         .fetch_one(&self.pool)
         .await
-        .context("fetch market overview")?;
+        .context("récupération de la vue d’ensemble du marché")?;
 
         Ok(MarketOverview {
             item_id,
@@ -3099,7 +2741,7 @@ impl RAthenaFrDatabase {
         .bind(limit)
         .fetch_all(&self.pool)
         .await
-        .context("fetch active vending stores")?;
+        .context("récupération des boutiques vending actives")?;
 
         rows.into_iter()
             .enumerate()
@@ -3150,7 +2792,7 @@ impl RAthenaFrDatabase {
         .bind(limit)
         .fetch_all(&self.pool)
         .await
-        .context("fetch active buying stores")?;
+        .context("récupération des buying stores actifs")?;
 
         rows.into_iter()
             .enumerate()
@@ -3170,6 +2812,1180 @@ impl RAthenaFrDatabase {
             })
             .collect()
     }
+
+    pub async fn item_detail_lines(
+        &self,
+        query: &str,
+        preferred_table: &str,
+    ) -> Result<Option<Vec<String>>> {
+        let Some(item) = self.search_items(query, 1).await?.into_iter().next() else {
+            return Ok(None);
+        };
+        let table_name = if self.table_exists(preferred_table).await? {
+            preferred_table
+        } else {
+            item.source_table.as_str()
+        };
+        let Some(search_columns) = self.item_search_columns(table_name).await? else {
+            return Ok(Some(vec![
+                format!("ID: `{}`", item.item_id),
+                format!("Nom: `{}`", item.display_name),
+                format!("Type: `{}`", item.item_type),
+                format!("Source: `{}`", item.source_table),
+            ]));
+        };
+        let Some(columns) = self.table_columns(table_name).await? else {
+            return Ok(None);
+        };
+
+        let item_type_expression = search_columns
+            .item_type
+            .as_deref()
+            .map(cast_column_as_char)
+            .unwrap_or_else(|| "NULL".to_string());
+        let sql = format!(
+            r#"
+            SELECT
+                {} AS item_id,
+                {} AS aegis_name,
+                {} AS display_name,
+                {} AS item_type,
+                {},
+                {},
+                {},
+                {},
+                {},
+                {}
+            FROM {}
+            WHERE {} = ?
+            LIMIT 1
+            "#,
+            cast_column_as_signed(&search_columns.id),
+            cast_column_as_char(&search_columns.aegis_name),
+            cast_column_as_char(&search_columns.display_name),
+            item_type_expression,
+            optional_signed_select(&columns, ITEM_DETAIL_BUY_COLUMNS, "buy_price"),
+            optional_signed_select(&columns, ITEM_DETAIL_SELL_COLUMNS, "sell_price"),
+            optional_signed_select(&columns, ITEM_DETAIL_WEIGHT_COLUMNS, "item_weight"),
+            optional_signed_select(&columns, ITEM_DETAIL_ATTACK_COLUMNS, "attack"),
+            optional_signed_select(&columns, ITEM_DETAIL_DEFENSE_COLUMNS, "defense"),
+            optional_signed_select(&columns, ITEM_DETAIL_SLOTS_COLUMNS, "slots"),
+            quote_identifier(table_name),
+            cast_column_as_signed(&search_columns.id),
+        );
+
+        let row = sqlx::query(&sql)
+            .bind(item.item_id)
+            .fetch_optional(&self.pool)
+            .await
+            .with_context(|| format!("récupération du détail d’item dans {table_name}"))?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+
+        let mut lines = Vec::new();
+        lines.push(format!("ID: `{}`", row.try_get::<i64, _>("item_id")?));
+        lines.push(format!(
+            "Nom: `{}` / `{}`",
+            row.try_get::<Option<String>, _>("display_name")?
+                .unwrap_or_else(|| item.display_name.clone()),
+            row.try_get::<Option<String>, _>("aegis_name")?
+                .unwrap_or_else(|| item.aegis_name.clone())
+        ));
+        lines.push(format!(
+            "Type: `{}`",
+            row.try_get::<Option<String>, _>("item_type")?
+                .unwrap_or_else(|| item.item_type.clone())
+        ));
+        lines.push(format!("Source: `{table_name}`"));
+
+        for (label, alias) in [
+            ("Prix achat", "buy_price"),
+            ("Prix vente", "sell_price"),
+            ("Poids", "item_weight"),
+            ("Attaque", "attack"),
+            ("Defense", "defense"),
+            ("Slots", "slots"),
+        ] {
+            if let Some(value) = row.try_get::<Option<i64>, _>(alias)? {
+                lines.push(format!("{label}: `{value}`"));
+            }
+        }
+
+        Ok(Some(lines))
+    }
+
+    pub async fn mob_detail_lines(
+        &self,
+        query: &str,
+        preferred_table: &str,
+    ) -> Result<Option<Vec<String>>> {
+        let Some(monster) = self.search_monsters(query, 1).await?.into_iter().next() else {
+            return Ok(None);
+        };
+        let table_name = if self.table_exists(preferred_table).await? {
+            preferred_table
+        } else {
+            monster.source_table.as_str()
+        };
+        let Some(search_columns) = self.monster_search_columns(table_name).await? else {
+            return Ok(Some(vec![
+                format!("ID: `{}`", monster.monster_id),
+                format!("Nom: `{}`", monster.display_name),
+                format!("Niveau: `{}`", monster.level),
+                format!("HP: `{}`", monster.hp),
+                format!("Source: `{}`", monster.source_table),
+            ]));
+        };
+        let Some(columns) = self.table_columns(table_name).await? else {
+            return Ok(None);
+        };
+
+        let sprite_expression = search_columns
+            .sprite
+            .as_deref()
+            .map(cast_column_as_char)
+            .unwrap_or_else(|| cast_column_as_char(&search_columns.display_name));
+        let level_expression = search_columns
+            .level
+            .as_deref()
+            .map(cast_column_as_signed)
+            .unwrap_or_else(|| "NULL".to_string());
+        let hp_expression = search_columns
+            .hp
+            .as_deref()
+            .map(cast_column_as_signed)
+            .unwrap_or_else(|| "NULL".to_string());
+        let sql = format!(
+            r#"
+            SELECT
+                {} AS monster_id,
+                {} AS sprite,
+                {} AS display_name,
+                {} AS monster_level,
+                {} AS monster_hp,
+                {},
+                {},
+                {},
+                {},
+                {},
+                {},
+                {},
+                {},
+                {},
+                {},
+                {}
+            FROM {}
+            WHERE {} = ?
+            LIMIT 1
+            "#,
+            cast_column_as_signed(&search_columns.id),
+            sprite_expression,
+            cast_column_as_char(&search_columns.display_name),
+            level_expression,
+            hp_expression,
+            optional_char_select(&columns, MOB_RACE_COLUMNS, "race"),
+            optional_char_select(&columns, MOB_ELEMENT_COLUMNS, "element"),
+            optional_char_select(&columns, MOB_SIZE_COLUMNS, "mob_size"),
+            optional_signed_select(&columns, &["str", "STR"], "str_stat"),
+            optional_signed_select(&columns, &["agi", "AGI"], "agi_stat"),
+            optional_signed_select(&columns, &["vit", "VIT"], "vit_stat"),
+            optional_signed_select(&columns, &["int", "INT"], "int_stat"),
+            optional_signed_select(&columns, &["dex", "DEX"], "dex_stat"),
+            optional_signed_select(&columns, &["luk", "LUK"], "luk_stat"),
+            optional_signed_select(&columns, &["def", "DEF"], "defense"),
+            optional_signed_select(&columns, &["mdef", "MDEF"], "mdefense"),
+            quote_identifier(table_name),
+            cast_column_as_signed(&search_columns.id),
+        );
+
+        let row = sqlx::query(&sql)
+            .bind(monster.monster_id)
+            .fetch_optional(&self.pool)
+            .await
+            .with_context(|| format!("récupération du détail de monstre dans {table_name}"))?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+
+        let mut lines = Vec::new();
+        lines.push(format!("ID: `{}`", row.try_get::<i64, _>("monster_id")?));
+        lines.push(format!(
+            "Nom: `{}` / `{}`",
+            row.try_get::<Option<String>, _>("display_name")?
+                .unwrap_or_else(|| monster.display_name.clone()),
+            row.try_get::<Option<String>, _>("sprite")?
+                .unwrap_or_else(|| monster.sprite.clone())
+        ));
+
+        for (label, alias) in [
+            ("Niveau", "monster_level"),
+            ("HP", "monster_hp"),
+            ("Defense", "defense"),
+            ("MDEF", "mdefense"),
+            ("STR", "str_stat"),
+            ("AGI", "agi_stat"),
+            ("VIT", "vit_stat"),
+            ("INT", "int_stat"),
+            ("DEX", "dex_stat"),
+            ("LUK", "luk_stat"),
+        ] {
+            if let Some(value) = row.try_get::<Option<i64>, _>(alias)? {
+                lines.push(format!("{label}: `{value}`"));
+            }
+        }
+
+        for (label, alias) in [
+            ("Race", "race"),
+            ("Element", "element"),
+            ("Taille", "mob_size"),
+        ] {
+            if let Some(value) = row.try_get::<Option<String>, _>(alias)? {
+                lines.push(format!("{label}: `{value}`"));
+            }
+        }
+
+        lines.push(format!("Source: `{table_name}`"));
+
+        Ok(Some(lines))
+    }
+
+    pub async fn mob_drop_lines(
+        &self,
+        query: &str,
+        preferred_table: &str,
+        limit: u32,
+    ) -> Result<Option<Vec<String>>> {
+        let Some(monster) = self.search_monsters(query, 1).await?.into_iter().next() else {
+            return Ok(None);
+        };
+        let table_name = if self.table_exists(preferred_table).await? {
+            preferred_table
+        } else {
+            monster.source_table.as_str()
+        };
+        let Some(search_columns) = self.monster_search_columns(table_name).await? else {
+            return Ok(Some(vec![format!(
+                "Aucune colonne de drop lisible dans `{table_name}`."
+            )]));
+        };
+        let Some(columns) = self.table_columns(table_name).await? else {
+            return Ok(None);
+        };
+        let pairs = drop_column_pairs(&columns);
+        if pairs.is_empty() {
+            return Ok(Some(vec![format!(
+                "Aucune colonne de drop détectée dans `{table_name}`."
+            )]));
+        }
+
+        let select_columns = pairs
+            .iter()
+            .flat_map(|(id_column, rate_column, label)| {
+                let safe_label = label.replace(' ', "_").to_ascii_lowercase();
+                let mut columns = vec![format!(
+                    "{} AS {}_id",
+                    cast_column_as_signed(id_column),
+                    safe_label
+                )];
+                columns.push(
+                    rate_column
+                        .as_ref()
+                        .map(|column| {
+                            format!("{} AS {}_rate", cast_column_as_signed(column), safe_label)
+                        })
+                        .unwrap_or_else(|| format!("NULL AS {}_rate", safe_label)),
+                );
+                columns
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!(
+            "SELECT {select_columns} FROM {} WHERE {} = ? LIMIT 1",
+            quote_identifier(table_name),
+            cast_column_as_signed(&search_columns.id),
+        );
+
+        let Some(row) = sqlx::query(&sql)
+            .bind(monster.monster_id)
+            .fetch_optional(&self.pool)
+            .await
+            .with_context(|| format!("récupération des drops de monstre dans {table_name}"))?
+        else {
+            return Ok(None);
+        };
+
+        let mut lines = vec![format!(
+            "Drops de `{}` (`{}`):",
+            monster.display_name, monster.monster_id
+        )];
+        for (_index, (_id_column, _rate_column, label)) in pairs.iter().enumerate() {
+            if lines.len() > limit as usize {
+                break;
+            }
+            let alias = label.replace(' ', "_").to_ascii_lowercase();
+            let item_id: Option<i64> = row.try_get(format!("{alias}_id").as_str())?;
+            let rate: Option<i64> = row.try_get(format!("{alias}_rate").as_str())?;
+            if let Some(item_id) = item_id.filter(|value| *value > 0) {
+                lines.push(format!(
+                    "{label}: item `{item_id}` - {}",
+                    format_drop_rate(rate)
+                ));
+            }
+        }
+
+        if lines.len() == 1 {
+            lines.push("Aucun drop renseigne.".to_string());
+        }
+
+        Ok(Some(lines))
+    }
+
+    pub async fn who_drops_lines(
+        &self,
+        item_query: &str,
+        preferred_mob_table: &str,
+        limit: u32,
+    ) -> Result<Option<Vec<String>>> {
+        let Some(item) = self.search_items(item_query, 1).await?.into_iter().next() else {
+            return Ok(None);
+        };
+        let mut table_name = preferred_mob_table.to_string();
+        if !self.table_exists(&table_name).await? {
+            for candidate in MOB_SEARCH_TABLES {
+                if self.table_exists(candidate).await? {
+                    table_name = (*candidate).to_string();
+                    break;
+                }
+            }
+        }
+        if !self.table_exists(&table_name).await? {
+            return Ok(Some(vec![format!(
+                "Table monstres `{table_name}` absente."
+            )]));
+        }
+        let Some(search_columns) = self.monster_search_columns(&table_name).await? else {
+            return Ok(Some(vec![format!(
+                "Aucune colonne monstre lisible dans `{table_name}`."
+            )]));
+        };
+        let Some(columns) = self.table_columns(&table_name).await? else {
+            return Ok(None);
+        };
+        let pairs = drop_column_pairs(&columns);
+        if pairs.is_empty() {
+            return Ok(Some(vec![format!(
+                "Aucune colonne de drop détectée dans `{table_name}`."
+            )]));
+        }
+
+        let conditions = pairs
+            .iter()
+            .map(|(id_column, _, _)| format!("{} = ?", cast_column_as_signed(id_column)))
+            .collect::<Vec<_>>()
+            .join(" OR ");
+        let sql = format!(
+            r#"
+            SELECT
+                {} AS monster_id,
+                {} AS monster_name
+            FROM {}
+            WHERE {conditions}
+            ORDER BY {} ASC
+            LIMIT ?
+            "#,
+            cast_column_as_signed(&search_columns.id),
+            cast_column_as_char(&search_columns.display_name),
+            quote_identifier(&table_name),
+            quote_identifier(&search_columns.id),
+        );
+        let mut query = sqlx::query(&sql);
+        for _ in &pairs {
+            query = query.bind(item.item_id);
+        }
+        let rows = query
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await
+            .with_context(|| {
+                format!("récupération des monstres qui drop l’item dans {table_name}")
+            })?;
+
+        let mut lines = vec![format!(
+            "Monstres qui drop `{}` (`{}`):",
+            item.display_name, item.item_id
+        )];
+        lines.extend(rows.into_iter().map(|row| {
+            let monster_id = row.try_get::<i64, _>("monster_id").unwrap_or_default();
+            let monster_name = row
+                .try_get::<Option<String>, _>("monster_name")
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| format!("Monstre {monster_id}"));
+            format!("`{monster_id}` - {monster_name}")
+        }));
+
+        if lines.len() == 1 {
+            lines.push("Aucun monstre n’a été trouvé.".to_string());
+        }
+
+        Ok(Some(lines))
+    }
+
+    pub async fn rank_summary_lines(
+        &self,
+        character_name: &str,
+        group_threshold: i32,
+    ) -> Result<Option<Vec<String>>> {
+        let row = sqlx::query(
+            r#"
+            SELECT
+                c.name,
+                CAST(c.base_level AS SIGNED) AS base_level,
+                CAST(c.job_level AS SIGNED) AS job_level,
+                CAST(c.zeny AS SIGNED) AS zeny,
+                (
+                    SELECT CAST(COUNT(*) + 1 AS SIGNED)
+                    FROM `char` c2
+                    INNER JOIN `login` l2 ON l2.account_id = c2.account_id
+                    WHERE l2.group_id < ?
+                      AND (c2.base_level > c.base_level OR (c2.base_level = c.base_level AND c2.job_level > c.job_level))
+                ) AS level_rank,
+                (
+                    SELECT CAST(COUNT(*) + 1 AS SIGNED)
+                    FROM `char` c2
+                    INNER JOIN `login` l2 ON l2.account_id = c2.account_id
+                    WHERE l2.group_id < ?
+                      AND (c2.job_level > c.job_level OR (c2.job_level = c.job_level AND c2.base_level > c.base_level))
+                ) AS job_rank,
+                (
+                    SELECT CAST(COUNT(*) + 1 AS SIGNED)
+                    FROM `char` c2
+                    INNER JOIN `login` l2 ON l2.account_id = c2.account_id
+                    WHERE l2.group_id < ?
+                      AND c2.zeny > c.zeny
+                ) AS zeny_rank
+            FROM `char` c
+            INNER JOIN `login` l ON l.account_id = c.account_id
+            WHERE c.name = ? AND l.group_id < ?
+            LIMIT 1
+            "#,
+        )
+        .bind(group_threshold)
+        .bind(group_threshold)
+        .bind(group_threshold)
+        .bind(character_name)
+        .bind(group_threshold)
+        .fetch_optional(&self.pool)
+        .await
+        .context("récupération du résumé de rang du personnage")?;
+
+        let Some(row) = row else {
+            return Ok(None);
+        };
+
+        Ok(Some(vec![
+            format!("Personnage: `{}`", row.try_get::<String, _>("name")?),
+            format!("Base level: `{}`", row.try_get::<i32, _>("base_level")?),
+            format!("Job level: `{}`", row.try_get::<i32, _>("job_level")?),
+            format!("Rang level: `#{}`", row.try_get::<i64, _>("level_rank")?),
+            format!("Rang job: `#{}`", row.try_get::<i64, _>("job_rank")?),
+            format!("Rang zeny: `#{}`", row.try_get::<i64, _>("zeny_rank")?),
+        ]))
+    }
+
+    pub async fn mvp_list_lines(&self, preferred_table: &str, limit: u32) -> Result<Vec<String>> {
+        let mut table_name = preferred_table.to_string();
+        if !self.table_exists(&table_name).await? {
+            for candidate in MOB_SEARCH_TABLES {
+                if self.table_exists(candidate).await? {
+                    table_name = (*candidate).to_string();
+                    break;
+                }
+            }
+        }
+        if !self.table_exists(&table_name).await? {
+            return Ok(vec![format!("Table monstres `{table_name}` absente.")]);
+        }
+        let Some(search_columns) = self.monster_search_columns(&table_name).await? else {
+            return Ok(vec![format!(
+                "Aucune colonne monstre lisible dans `{table_name}`."
+            )]);
+        };
+        let Some(columns) = self.table_columns(&table_name).await? else {
+            return Ok(vec![format!("Table monstres `{table_name}` absente.")]);
+        };
+        let Some(mvp_exp_column) = columns.first(MOB_MVP_EXP_COLUMNS) else {
+            return Ok(vec![format!(
+                "Aucune colonne MVP détectée dans `{table_name}`."
+            )]);
+        };
+        let level_expression = search_columns
+            .level
+            .as_deref()
+            .map(cast_column_as_signed)
+            .unwrap_or_else(|| "NULL".to_string());
+        let hp_expression = search_columns
+            .hp
+            .as_deref()
+            .map(cast_column_as_signed)
+            .unwrap_or_else(|| "NULL".to_string());
+        let sql = format!(
+            r#"
+            SELECT
+                {} AS monster_id,
+                {} AS monster_name,
+                {} AS monster_level,
+                {} AS monster_hp,
+                {} AS mvp_exp
+            FROM {}
+            WHERE {} > 0
+            ORDER BY {} DESC, {} ASC
+            LIMIT ?
+            "#,
+            cast_column_as_signed(&search_columns.id),
+            cast_column_as_char(&search_columns.display_name),
+            level_expression,
+            hp_expression,
+            cast_column_as_signed(&mvp_exp_column),
+            quote_identifier(&table_name),
+            cast_column_as_signed(&mvp_exp_column),
+            quote_identifier(&mvp_exp_column),
+            quote_identifier(&search_columns.id),
+        );
+        let rows = sqlx::query(&sql)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await
+            .context("récupération de la liste des MVP")?;
+
+        Ok(join_limited_lines(
+            rows.into_iter()
+                .map(|row| {
+                    let id = row.try_get::<i64, _>("monster_id").unwrap_or_default();
+                    let name = row
+                        .try_get::<Option<String>, _>("monster_name")
+                        .ok()
+                        .flatten()
+                        .unwrap_or_else(|| format!("MVP {id}"));
+                    let level = row
+                        .try_get::<Option<i64>, _>("monster_level")
+                        .ok()
+                        .flatten();
+                    let hp = row.try_get::<Option<i64>, _>("monster_hp").ok().flatten();
+                    format!(
+                        "`{id}` - {name} - niveau `{}` - HP `{}`",
+                        level.unwrap_or_default(),
+                        hp.unwrap_or_default()
+                    )
+                })
+                .collect(),
+            "Aucun MVP n’a été trouvé.",
+        ))
+    }
+
+    pub async fn character_cart_lines(
+        &self,
+        character_name: &str,
+        limit: u32,
+    ) -> Result<Vec<String>> {
+        self.character_container_lines(
+            "cart_inventory",
+            "Chariot",
+            character_name,
+            "ci",
+            "INNER JOIN `char` c ON c.char_id = ci.char_id",
+            "c.name = ?",
+            limit,
+        )
+        .await
+    }
+
+    pub async fn character_storage_lines(
+        &self,
+        character_name: &str,
+        limit: u32,
+    ) -> Result<Vec<String>> {
+        if !self.table_exists("storage").await? {
+            return Ok(vec!["Table `storage` absente.".to_string()]);
+        }
+        let rows = sqlx::query(
+            r#"
+            SELECT CAST(s.nameid AS SIGNED) AS item_id, CAST(s.amount AS SIGNED) AS amount
+            FROM `storage` s
+            INNER JOIN `char` c ON c.account_id = s.account_id
+            WHERE c.name = ?
+            ORDER BY s.nameid ASC
+            LIMIT ?
+            "#,
+        )
+        .bind(character_name)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .context("récupération du storage du personnage")?;
+
+        Ok(join_limited_lines(
+            rows.into_iter()
+                .map(|row| {
+                    format!(
+                        "Item `{}` x`{}`",
+                        row.try_get::<i64, _>("item_id").unwrap_or_default(),
+                        row.try_get::<i64, _>("amount").unwrap_or_default()
+                    )
+                })
+                .collect(),
+            "Aucun item n’a été trouvé dans le storage.",
+        ))
+    }
+
+    pub async fn guild_storage_lines(&self, guild_name: &str, limit: u32) -> Result<Vec<String>> {
+        if !self.table_exists("guild_storage").await? {
+            return Ok(vec!["Table `guild_storage` absente.".to_string()]);
+        }
+        let rows = sqlx::query(
+            r#"
+            SELECT CAST(gs.nameid AS SIGNED) AS item_id, CAST(gs.amount AS SIGNED) AS amount
+            FROM `guild_storage` gs
+            INNER JOIN `guild` g ON g.guild_id = gs.guild_id
+            WHERE g.name = ?
+            ORDER BY gs.nameid ASC
+            LIMIT ?
+            "#,
+        )
+        .bind(guild_name)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .context("récupération du storage de guilde")?;
+
+        Ok(join_limited_lines(
+            rows.into_iter()
+                .map(|row| {
+                    format!(
+                        "Item `{}` x`{}`",
+                        row.try_get::<i64, _>("item_id").unwrap_or_default(),
+                        row.try_get::<i64, _>("amount").unwrap_or_default()
+                    )
+                })
+                .collect(),
+            "Aucun item n’a été trouvé dans le storage de guilde.",
+        ))
+    }
+
+    async fn character_container_lines(
+        &self,
+        table_name: &str,
+        label: &str,
+        character_name: &str,
+        alias: &str,
+        join_clause: &str,
+        where_clause: &str,
+        limit: u32,
+    ) -> Result<Vec<String>> {
+        if !self.table_exists(table_name).await? {
+            return Ok(vec![format!("Table `{table_name}` absente.")]);
+        }
+        let sql = format!(
+            r#"
+            SELECT
+                CAST({alias}.nameid AS SIGNED) AS item_id,
+                CAST({alias}.amount AS SIGNED) AS amount,
+                CAST(COALESCE({alias}.refine, 0) AS SIGNED) AS refine
+            FROM {}
+            {join_clause}
+            WHERE {where_clause}
+            ORDER BY {alias}.nameid ASC
+            LIMIT ?
+            "#,
+            quote_identifier(table_name),
+        );
+        let rows = sqlx::query(&sql)
+            .bind(character_name)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await
+            .with_context(|| format!("récupération de {label} pour le personnage"))?;
+
+        Ok(join_limited_lines(
+            rows.into_iter()
+                .map(|row| {
+                    format!(
+                        "Item `{}` x`{}` refine `+{}`",
+                        row.try_get::<i64, _>("item_id").unwrap_or_default(),
+                        row.try_get::<i64, _>("amount").unwrap_or_default(),
+                        row.try_get::<i64, _>("refine").unwrap_or_default()
+                    )
+                })
+                .collect(),
+            &format!("Aucun item n’a été trouvé dans {label}."),
+        ))
+    }
+
+    pub async fn variable_lines(
+        &self,
+        table_name: &str,
+        character_name: &str,
+        limit: u32,
+    ) -> Result<Vec<String>> {
+        if !["char_reg_num", "char_reg_str", "acc_reg_num", "acc_reg_str"]
+            .iter()
+            .any(|allowed| allowed.eq_ignore_ascii_case(table_name))
+        {
+            anyhow::bail!("table de variables non autorisée");
+        }
+        if !self.table_exists(table_name).await? {
+            return Ok(vec![format!("Table `{table_name}` absente.")]);
+        }
+
+        let account_filter = table_name.starts_with("acc_");
+        let id_column = if account_filter {
+            "account_id"
+        } else {
+            "char_id"
+        };
+        let owner_subquery = if account_filter {
+            "(SELECT account_id FROM `char` WHERE name = ? LIMIT 1)"
+        } else {
+            "(SELECT char_id FROM `char` WHERE name = ? LIMIT 1)"
+        };
+        let sql = format!(
+            r#"
+            SELECT `key`, `index`, `value`
+            FROM {}
+            WHERE `{id_column}` = {owner_subquery}
+            ORDER BY `key` ASC, `index` ASC
+            LIMIT ?
+            "#,
+            quote_identifier(table_name),
+        );
+        let rows = sqlx::query(&sql)
+            .bind(character_name)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await
+            .with_context(|| format!("récupération des variables depuis {table_name}"))?;
+
+        Ok(join_limited_lines(
+            rows.into_iter()
+                .map(|row| {
+                    let key = row
+                        .try_get::<Option<String>, _>("key")
+                        .ok()
+                        .flatten()
+                        .unwrap_or_else(|| "var".to_string());
+                    let index = row.try_get::<Option<i64>, _>("index").ok().flatten();
+                    let value = row
+                        .try_get::<Option<String>, _>("value")
+                        .ok()
+                        .flatten()
+                        .unwrap_or_default();
+                    format!("`{key}`[{}] = `{value}`", index.unwrap_or_default())
+                })
+                .collect(),
+            "Aucune variable n’a été trouvée.",
+        ))
+    }
+
+    pub async fn character_log_lines(
+        &self,
+        table_name: &str,
+        character_name: &str,
+        limit: u32,
+    ) -> Result<Vec<String>> {
+        self.filtered_log_lines(table_name, Some(character_name), None, limit)
+            .await
+    }
+
+    pub async fn named_log_lines(
+        &self,
+        table_name: &str,
+        name: &str,
+        limit: u32,
+    ) -> Result<Vec<String>> {
+        self.filtered_log_lines(table_name, None, Some(name), limit)
+            .await
+    }
+
+    pub async fn recent_log_lines(&self, table_name: &str, limit: u32) -> Result<Vec<String>> {
+        self.filtered_log_lines(table_name, None, None, limit).await
+    }
+
+    async fn filtered_log_lines(
+        &self,
+        table_name: &str,
+        character_name: Option<&str>,
+        name_filter: Option<&str>,
+        limit: u32,
+    ) -> Result<Vec<String>> {
+        if !RELEASE_LOG_TABLES
+            .iter()
+            .any(|table| table.name().eq_ignore_ascii_case(table_name))
+        {
+            anyhow::bail!("table de logs non autorisée");
+        }
+        if !self.table_exists(table_name).await? {
+            return Ok(vec![format!("Table `{table_name}` absente.")]);
+        }
+        let Some(columns) = self.table_columns(table_name).await? else {
+            return Ok(vec![format!("Table `{table_name}` absente.")]);
+        };
+        let display_columns = columns
+            .names
+            .iter()
+            .filter(|name| !is_sensitive_column(name))
+            .take(6)
+            .cloned()
+            .collect::<Vec<_>>();
+        if display_columns.is_empty() {
+            return Ok(vec![format!(
+                "Aucune colonne affichable dans `{table_name}`."
+            )]);
+        }
+
+        let select_clause = display_columns
+            .iter()
+            .enumerate()
+            .map(|(index, column)| format!("{} AS c{index}", cast_column_as_char(column)))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let order_column = columns
+            .first(&["time", "date", "mvp_date", "logtime", "atcommand_date"])
+            .or_else(|| display_columns.first().cloned());
+        let order_clause = order_column
+            .as_ref()
+            .map(|column| format!("ORDER BY {} DESC", quote_identifier(column)))
+            .unwrap_or_default();
+
+        let mut where_clause = String::new();
+        let mut bind_character = false;
+        let mut bind_name = false;
+        if let Some(_character_name) = character_name {
+            if let Some(char_column) = columns.first(&["char_id", "src_charid", "kill_char_id"]) {
+                where_clause = format!(
+                    "WHERE {} IN (SELECT char_id FROM `char` WHERE name = ?)",
+                    quote_identifier(&char_column)
+                );
+                bind_character = true;
+            } else if let Some(account_column) = columns.first(&["account_id"]) {
+                where_clause = format!(
+                    "WHERE {} = (SELECT account_id FROM `char` WHERE name = ? LIMIT 1)",
+                    quote_identifier(&account_column)
+                );
+                bind_character = true;
+            } else if let Some(name_column) = columns.first(&["name", "char_name", "src_name"]) {
+                where_clause = format!("WHERE {} = ?", quote_identifier(&name_column));
+                bind_character = true;
+            }
+        } else if let Some(_name_filter) = name_filter {
+            if let Some(name_column) = columns.first(&["name", "char_name", "gm", "user", "userid"])
+            {
+                where_clause = format!("WHERE {} = ?", quote_identifier(&name_column));
+                bind_name = true;
+            }
+        }
+
+        let sql = format!(
+            "SELECT {select_clause} FROM {} {where_clause} {order_clause} LIMIT ?",
+            quote_identifier(table_name),
+        );
+        let mut query = sqlx::query(&sql);
+        if bind_character {
+            if let Some(character_name) = character_name {
+                query = query.bind(character_name);
+            }
+        }
+        if bind_name {
+            if let Some(name_filter) = name_filter {
+                query = query.bind(name_filter);
+            }
+        }
+
+        let rows = query
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await
+            .with_context(|| format!("récupération des lignes de logs depuis {table_name}"))?;
+
+        Ok(join_limited_lines(
+            rows.into_iter()
+                .map(|row| {
+                    display_columns
+                        .iter()
+                        .enumerate()
+                        .map(|(index, column)| {
+                            let value = row
+                                .try_get::<Option<String>, _>(format!("c{index}").as_str())
+                                .ok()
+                                .flatten()
+                                .unwrap_or_default();
+                            format!("{}=`{}`", column, mask_sensitive_value(column, value))
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" - ")
+                })
+                .collect(),
+            "Aucune ligne n’a été trouvée.",
+        ))
+    }
+
+    pub async fn top_characters_by_job(
+        &self,
+        group_threshold: i32,
+        limit: u32,
+    ) -> Result<Vec<RankingEntry>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT
+                c.name,
+                CAST(c.class AS SIGNED) AS class_id,
+                CAST(c.base_level AS SIGNED) AS base_level,
+                CAST(c.job_level AS SIGNED) AS job_level,
+                c.last_map
+            FROM `char` c
+            INNER JOIN `login` l ON l.account_id = c.account_id
+            WHERE l.group_id < ?
+            ORDER BY c.job_level DESC, c.base_level DESC, c.name ASC
+            LIMIT ?
+            "#,
+        )
+        .bind(group_threshold)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .context("récupération du classement job des personnages")?;
+
+        rows.into_iter()
+            .enumerate()
+            .map(|(index, row)| {
+                Ok(RankingEntry {
+                    rank: index + 1,
+                    name: row.try_get("name")?,
+                    class_id: row.try_get("class_id")?,
+                    base_level: row.try_get("base_level")?,
+                    job_level: row.try_get("job_level")?,
+                    map: row.try_get("last_map")?,
+                })
+            })
+            .collect()
+    }
+
+    pub async fn account_id_for_character(&self, character_name: &str) -> Result<Option<i64>> {
+        let row = sqlx::query(
+            r#"
+            SELECT CAST(account_id AS SIGNED) AS account_id
+            FROM `char`
+            WHERE name = ?
+            LIMIT 1
+            "#,
+        )
+        .bind(character_name)
+        .fetch_optional(&self.pool)
+        .await
+        .context("récupération de l’account_id du personnage")?;
+
+        row.map(|row| row.try_get("account_id").map_err(Into::into))
+            .transpose()
+    }
+
+    pub async fn account_status_by_character(
+        &self,
+        character_name: &str,
+    ) -> Result<Option<AccountStatus>> {
+        let Some(account_id) = self.account_id_for_character(character_name).await? else {
+            return Ok(None);
+        };
+
+        self.account_status(account_id).await
+    }
+
+    pub async fn release_health_lines(&self) -> Result<Vec<String>> {
+        let mut lines = Vec::new();
+
+        let required = self
+            .table_presence_lines("requise", RELEASE_REQUIRED_TABLES)
+            .await?;
+        let optional = self
+            .table_presence_lines("optionnelle", RELEASE_OPTIONAL_TABLES)
+            .await?;
+        let logs = self.table_presence_lines("log", RELEASE_LOG_TABLES).await?;
+
+        lines.push("Tables requises:".to_string());
+        lines.extend(required);
+        lines.push(String::new());
+        lines.push("Tables optionnelles:".to_string());
+        lines.extend(optional);
+        lines.push(String::new());
+        lines.push("Logs SQL:".to_string());
+        lines.extend(logs);
+
+        Ok(lines)
+    }
+
+    pub async fn detected_rathena_tables(&self, limit: u32) -> Result<Vec<String>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = DATABASE()
+              AND table_type = 'BASE TABLE'
+            ORDER BY table_name ASC
+            LIMIT ?
+            "#,
+        )
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .context("list detected rAthena tables")?;
+
+        rows.into_iter()
+            .map(|row| row.try_get("table_name").map_err(Into::into))
+            .collect()
+    }
+
+    pub async fn useful_table_counts(&self) -> Result<Vec<String>> {
+        let mut lines = Vec::new();
+
+        for table in RELEASE_REQUIRED_TABLES
+            .iter()
+            .chain(RELEASE_OPTIONAL_TABLES.iter())
+            .chain(RELEASE_LOG_TABLES.iter())
+        {
+            let table_name = table.name();
+            if !self.table_exists(table_name).await? {
+                continue;
+            }
+
+            let sql = format!(
+                "SELECT CAST(COUNT(*) AS SIGNED) AS row_count FROM {}",
+                quote_identifier(table_name)
+            );
+            let row = sqlx::query(&sql)
+                .fetch_one(&self.pool)
+                .await
+                .with_context(|| format!("comptage des lignes dans {table_name}"))?;
+            let row_count: i64 = row.try_get("row_count")?;
+
+            lines.push(format!("`{table_name}`: `{row_count}` lignes"));
+        }
+
+        Ok(lines)
+    }
+
+    pub async fn log_table_sizes(&self) -> Result<Vec<String>> {
+        let mut lines = Vec::new();
+
+        for table in RELEASE_LOG_TABLES {
+            let table_name = table.name();
+            if !self.table_exists(table_name).await? {
+                lines.push(format!("`{table_name}`: absente"));
+                continue;
+            }
+
+            let row = sqlx::query(
+                r#"
+                SELECT
+                    CAST(table_rows AS SIGNED) AS table_rows,
+                    CAST(COALESCE(data_length, 0) + COALESCE(index_length, 0) AS SIGNED) AS bytes
+                FROM information_schema.tables
+                WHERE table_schema = DATABASE()
+                  AND table_name = ?
+                "#,
+            )
+            .bind(table_name)
+            .fetch_one(&self.pool)
+            .await
+            .with_context(|| {
+                format!("récupération de la taille de la table de logs {table_name}")
+            })?;
+
+            let table_rows: Option<i64> = row.try_get("table_rows")?;
+            let bytes: i64 = row.try_get("bytes")?;
+            lines.push(format!(
+                "`{table_name}`: environ `{}` lignes, `{}` octets",
+                table_rows.unwrap_or_default(),
+                bytes
+            ));
+        }
+
+        Ok(lines)
+    }
+
+    pub async fn sql_updates_lines(&self, limit: u32) -> Result<Vec<String>> {
+        if !self.table_exists(DatabaseTable::SqlUpdates.name()).await? {
+            return Ok(vec!["`sql_updates` absente.".to_string()]);
+        }
+
+        let columns = self.table_columns(DatabaseTable::SqlUpdates.name()).await?;
+        let Some(columns) = columns else {
+            return Ok(vec!["`sql_updates` absente.".to_string()]);
+        };
+        let revision = columns
+            .first(&["revision", "version", "file"])
+            .or_else(|| columns.names.first().cloned());
+        let Some(revision) = revision else {
+            return Ok(vec![
+                "`sql_updates` ne contient aucune colonne lisible.".to_string()
+            ]);
+        };
+        let applied = columns.first(&["applied", "date", "timestamp"]);
+        let applied_expr = applied
+            .as_ref()
+            .map(|column| cast_column_as_char(column))
+            .unwrap_or_else(|| "NULL".to_string());
+        let sql = format!(
+            r#"
+            SELECT
+                {} AS revision,
+                {} AS applied
+            FROM `sql_updates`
+            ORDER BY {} DESC
+            LIMIT ?
+            "#,
+            cast_column_as_char(&revision),
+            applied_expr,
+            quote_identifier(&revision),
+        );
+
+        let rows = sqlx::query(&sql)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await
+            .context("récupération des dernières lignes de sql_updates")?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row| {
+                let revision: Option<String> = row.try_get("revision").ok();
+                let applied: Option<String> = row.try_get("applied").ok();
+                format!(
+                    "`{}` - `{}`",
+                    revision.unwrap_or_else(|| "inconnu".to_string()),
+                    applied.unwrap_or_else(|| "date inconnue".to_string())
+                )
+            })
+            .collect())
+    }
+
+    async fn table_presence_lines(
+        &self,
+        label: &str,
+        tables: &[DatabaseTable],
+    ) -> Result<Vec<String>> {
+        let mut lines = Vec::new();
+
+        for table in tables {
+            let table_name = table.name();
+            let state = if self.table_exists(table_name).await? {
+                "présente"
+            } else {
+                "manquante"
+            };
+            lines.push(format!("`{table_name}` ({label}): {state}"));
+        }
+
+        Ok(lines)
+    }
 }
 
 fn database_engine_name(version: &str) -> String {
@@ -3182,12 +3998,6 @@ fn database_engine_name(version: &str) -> String {
     } else {
         "MariaDB".to_string()
     }
-}
-
-fn contains_table_name(table_names: &[&str], table_name: &str) -> bool {
-    table_names
-        .iter()
-        .any(|candidate| candidate.eq_ignore_ascii_case(table_name))
 }
 
 fn quote_identifier(identifier: &str) -> String {

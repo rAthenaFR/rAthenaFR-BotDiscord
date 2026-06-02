@@ -35,7 +35,7 @@ async fn deploy() -> Result<()> {
     let config = AppConfig::from_env_for_deploy()?;
     log_display_name();
     log_cache_configuration(&config);
-    deploy_commands(&config.discord).await?;
+    deploy_commands(&config).await?;
     info!("Commandes slash Discord déployées avec succès.");
     Ok(())
 }

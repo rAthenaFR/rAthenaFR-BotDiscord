@@ -1,193 +1,263 @@
-use super::options::{account_id_option, character_lookup_option, item_id_option, limit_option};
 use serenity::all::{CommandOptionType, CreateCommand, CreateCommandOption};
 
 pub(super) fn command_definitions() -> Vec<CreateCommand> {
     vec![
-        charquests_command(),
-        charequipment_command(),
-        charinventory_command(),
-        itemcount_command(),
-        itemowners_command(),
-        accountlist_command(),
-        accountoverview_command(),
-        accountmanage_command(),
-        banlist_command(),
-        accountchars_command(),
-        accountstatus_command(),
+        staff_command(),
+        mod_command(),
+        debug_command(),
+        audit_command(),
+        db_command(),
+        gmmsg_command(),
     ]
 }
 
-fn charquests_command() -> CreateCommand {
-    CreateCommand::new("charquests")
-        .description(
-            "Staff uniquement : liste les quêtes liées à un personnage depuis la base de données.",
-        )
-        .add_option(character_lookup_option())
-        .add_option(limit_option())
-}
-
-fn charequipment_command() -> CreateCommand {
-    CreateCommand::new("charequipment")
-        .description("Staff uniquement : liste les objets équipés d’un personnage depuis la base de données.")
-        .add_option(character_lookup_option())
-        .add_option(limit_option())
-}
-
-fn charinventory_command() -> CreateCommand {
-    CreateCommand::new("charinventory")
-        .description(
-            "Staff uniquement : liste l’inventaire d’un personnage depuis la base de données.",
-        )
-        .add_option(character_lookup_option())
-        .add_option(limit_option())
-}
-
-fn itemcount_command() -> CreateCommand {
-    CreateCommand::new("itemcount")
-        .description(
-            "Staff uniquement : compte un objet par ID dans les tables natives d’inventaire.",
-        )
-        .add_option(item_id_option())
-}
-
-fn itemowners_command() -> CreateCommand {
-    CreateCommand::new("itemowners")
-        .description(
-            "Staff uniquement : liste les propriétaires visibles d’un objet dans l’inventaire.",
-        )
-        .add_option(item_id_option())
-        .add_option(limit_option())
-}
-
-fn accountlist_command() -> CreateCommand {
-    CreateCommand::new("accountlist")
-        .description("GM uniquement : liste les comptes créés dans la table login.")
+fn staff_command() -> CreateCommand {
+    CreateCommand::new("staff")
+        .description("Commandes staff essentielles en lecture seule.")
         .add_option(
-            CreateCommandOption::new(
-                CommandOptionType::Integer,
-                "page",
-                "Page à afficher, triée du plus récent au plus ancien.",
+            subcommand("player", "Fiche complète d'un personnage.")
+                .add_sub_option(character_option()),
+        )
+        .add_option(
+            subcommand(
+                "account",
+                "Compte lié au personnage, sans mot de passe ni hash.",
             )
-            .min_int_value(1)
-            .required(false),
-        )
-        .add_option(limit_option())
-}
-
-fn accountoverview_command() -> CreateCommand {
-    CreateCommand::new("accountoverview")
-        .description("Staff uniquement : affiche un résumé sûr et compact d’un compte.")
-        .add_option(account_id_option())
-        .add_option(limit_option())
-}
-
-fn accountmanage_command() -> CreateCommand {
-    CreateCommand::new("accountmanage")
-        .description("GM uniquement : gère complètement un compte utilisateur rAthena.")
-        .add_option(account_id_option())
-        .add_option(
-            CreateCommandOption::new(CommandOptionType::String, "action", "Action à effectuer.")
-                .required(true)
-                .add_string_choice("Éditer le compte", "edit")
-                .add_string_choice("Supprimer tout le compte", "delete"),
+            .add_sub_option(character_option()),
         )
         .add_option(
-            CreateCommandOption::new(
-                CommandOptionType::String,
-                "confirm",
-                "Confirmation pour delete : DELETE-ALL-ID.",
+            subcommand(
+                "chars",
+                "Personnages d'un compte ou du compte lié à un personnage.",
             )
-            .required(false),
+            .add_sub_option(lookup_option()),
         )
         .add_option(
-            CreateCommandOption::new(CommandOptionType::String, "username", "Nouveau login.")
-                .required(false),
+            subcommand("inventory", "Inventaire complet du personnage.")
+                .add_sub_option(character_option())
+                .add_sub_option(limit_option()),
         )
         .add_option(
-            CreateCommandOption::new(
-                CommandOptionType::String,
-                "password",
-                "Nouveau mot de passe.",
-            )
-            .required(false),
+            subcommand("equipment", "Equipement porte par le personnage.")
+                .add_sub_option(character_option())
+                .add_sub_option(limit_option()),
         )
         .add_option(
-            CreateCommandOption::new(CommandOptionType::String, "sex", "Sexe du compte.")
-                .required(false)
-                .add_string_choice("Homme", "M")
-                .add_string_choice("Femme", "F"),
+            subcommand("cart", "Contenu du cart.")
+                .add_sub_option(character_option())
+                .add_sub_option(limit_option()),
         )
         .add_option(
-            CreateCommandOption::new(
-                CommandOptionType::String,
-                "birthdate",
-                "Nouvelle date de naissance au format YYYY-MM-DD.",
-            )
-            .required(false),
+            subcommand("storage", "Storage du compte.")
+                .add_sub_option(character_option())
+                .add_sub_option(limit_option()),
         )
         .add_option(
-            CreateCommandOption::new(CommandOptionType::String, "email", "Nouvel email.")
-                .required(false),
+            subcommand("guildstorage", "Coffre de guilde.")
+                .add_sub_option(guild_option())
+                .add_sub_option(limit_option()),
         )
         .add_option(
-            CreateCommandOption::new(CommandOptionType::Integer, "group_id", "Nouveau group_id.")
-                .required(false),
+            subcommand("whohas", "Recherche qui possède un item.")
+                .add_sub_option(item_option())
+                .add_sub_option(limit_option()),
         )
         .add_option(
-            CreateCommandOption::new(
-                CommandOptionType::Integer,
-                "state",
-                "Nouvel état du compte.",
-            )
-            .required(false),
+            subcommand("item-search", "Recherche d'un item dans les conteneurs.")
+                .add_sub_option(item_option())
+                .add_sub_option(limit_option()),
+        )
+        .add_option(subcommand("zeny", "Zeny d'un personnage.").add_sub_option(character_option()))
+        .add_option(
+            subcommand("zenylog", "Historique zeny si les logs existent.")
+                .add_sub_option(character_option())
+                .add_sub_option(limit_option()),
         )
         .add_option(
-            CreateCommandOption::new(
-                CommandOptionType::Integer,
-                "unban_time",
-                "Nouveau timestamp de fin de bannissement, 0 pour aucun.",
-            )
-            .required(false),
+            subcommand("picklog", "Historique items si les logs existent.")
+                .add_sub_option(character_option())
+                .add_sub_option(limit_option()),
         )
         .add_option(
-            CreateCommandOption::new(
-                CommandOptionType::Integer,
-                "expiration_time",
-                "Nouveau timestamp d’expiration, 0 pour aucune.",
-            )
-            .required(false),
+            subcommand("trade-log", "Échanges joueur/joueur si les logs existent.")
+                .add_sub_option(character_option())
+                .add_sub_option(limit_option()),
         )
         .add_option(
-            CreateCommandOption::new(
-                CommandOptionType::Integer,
-                "character_slots",
-                "Nouveau nombre de slots de personnages.",
-            )
-            .required(false),
+            subcommand("mvp-log", "MVP tués par un joueur.")
+                .add_sub_option(character_option())
+                .add_sub_option(limit_option()),
+        )
+        .add_option(
+            subcommand("loginlog", "Historique de connexion.")
+                .add_sub_option(character_option())
+                .add_sub_option(limit_option()),
+        )
+        .add_option(
+            subcommand("ip-accounts", "Comptes partageant les mêmes IP.")
+                .add_sub_option(character_option())
+                .add_sub_option(limit_option()),
+        )
+        .add_option(
+            subcommand("multiaccount", "Détection multi-compte.")
+                .add_sub_option(character_option())
+                .add_sub_option(limit_option()),
+        )
+        .add_option(
+            subcommand("banned", "Liste des comptes bannis ou bloqués.")
+                .add_sub_option(limit_option()),
         )
 }
 
-fn banlist_command() -> CreateCommand {
-    CreateCommand::new("banlist")
-        .description(
-            "Staff uniquement : liste les comptes bloqués ou bannis depuis la table login.",
+fn mod_command() -> CreateCommand {
+    CreateCommand::new("mod")
+        .description("Commandes de modération en lecture seule.")
+        .add_option(
+            subcommand("chatlog", "Messages récents d'un joueur.")
+                .add_sub_option(character_option())
+                .add_sub_option(limit_option()),
         )
-        .add_option(limit_option())
+        .add_option(
+            subcommand("chat-search", "Recherche dans les logs de chat.")
+                .add_sub_option(text_option("text", "Texte à rechercher."))
+                .add_sub_option(limit_option()),
+        )
+        .add_option(
+            subcommand("report-context", "Contexte rapide d'un signalement.")
+                .add_sub_option(character_option())
+                .add_sub_option(limit_option()),
+        )
+        .add_option(
+            subcommand("branchlog", "Utilisation Dead Branch/Bloody Branch.")
+                .add_sub_option(character_option())
+                .add_sub_option(limit_option()),
+        )
 }
 
-fn accountchars_command() -> CreateCommand {
-    CreateCommand::new("accountchars")
-        .description(
-            "Staff uniquement : liste les personnages liés à un compte depuis la base de données.",
+fn debug_command() -> CreateCommand {
+    CreateCommand::new("debug")
+        .description("Commandes debug rAthena en lecture seule.")
+        .add_option(
+            subcommand("quest", "Quêtes actives/terminées d'un personnage.")
+                .add_sub_option(character_option())
+                .add_sub_option(limit_option()),
         )
-        .add_option(account_id_option())
-        .add_option(limit_option())
+        .add_option(
+            subcommand("char-vars", "Variables personnage.")
+                .add_sub_option(character_option())
+                .add_sub_option(limit_option()),
+        )
+        .add_option(
+            subcommand("acc-vars", "Variables compte.")
+                .add_sub_option(character_option())
+                .add_sub_option(limit_option()),
+        )
 }
 
-fn accountstatus_command() -> CreateCommand {
-    CreateCommand::new("accountstatus")
-        .description(
-            "Staff uniquement : affiche les champs sûrs d’état du compte depuis la table login.",
+fn audit_command() -> CreateCommand {
+    CreateCommand::new("audit")
+        .description("Audit staff et logs GM en lecture seule.")
+        .add_option(
+            subcommand("atcommands", "Commandes GM utilisées par un GM.")
+                .add_sub_option(text_option("gm", "Nom du GM."))
+                .add_sub_option(limit_option()),
         )
-        .add_option(account_id_option())
+        .add_option(
+            subcommand(
+                "item-created",
+                "Items créés par commandes/admin/scripts si détectables.",
+            )
+            .add_sub_option(limit_option()),
+        )
+        .add_option(
+            subcommand("zeny-created", "Zeny créé ou retiré si détectable.")
+                .add_sub_option(limit_option()),
+        )
+        .add_option(
+            subcommand("gm-activity", "Résumé d'activité d'un GM.")
+                .add_sub_option(text_option("gm", "Nom du GM."))
+                .add_sub_option(limit_option()),
+        )
+}
+
+fn db_command() -> CreateCommand {
+    CreateCommand::new("db")
+        .description("Diagnostic base rAthena en lecture seule.")
+        .add_option(subcommand(
+            "health",
+            "Tables présentes, manquantes et logs actifs.",
+        ))
+        .add_option(
+            subcommand("tables", "Liste les tables rAthena détectées.")
+                .add_sub_option(limit_option()),
+        )
+        .add_option(subcommand("count", "Nombre de lignes par table utile."))
+        .add_option(subcommand("logs-size", "Volume des logs SQL."))
+        .add_option(
+            subcommand("last-update", "État de sql_updates si la table existe.")
+                .add_sub_option(limit_option()),
+        )
+}
+
+fn gmmsg_command() -> CreateCommand {
+    CreateCommand::new("gmmsg")
+        .description("Messages en jeu via GameBridge.")
+        .add_option(
+            subcommand("server", "Message global serveur.").add_sub_option(message_option()),
+        )
+        .add_option(
+            subcommand("map", "Message sur une map, si le bridge le supporte.")
+                .add_sub_option(text_option("map", "Nom de la map."))
+                .add_sub_option(message_option()),
+        )
+        .add_option(
+            subcommand("blue", "Annonce bleue, si le bridge la supporte.")
+                .add_sub_option(message_option()),
+        )
+        .add_option(
+            subcommand("color", "Annonce couleur RRGGBB, si le bridge la supporte.")
+                .add_sub_option(text_option("hex", "Couleur RRGGBB."))
+                .add_sub_option(message_option()),
+        )
+        .add_option(
+            subcommand("test", "Mode test/log uniquement.").add_sub_option(message_option()),
+        )
+}
+
+fn subcommand(name: &str, description: &str) -> CreateCommandOption {
+    CreateCommandOption::new(CommandOptionType::SubCommand, name, description)
+}
+
+fn text_option(name: &str, description: &str) -> CreateCommandOption {
+    CreateCommandOption::new(CommandOptionType::String, name, description).required(true)
+}
+
+fn character_option() -> CreateCommandOption {
+    text_option("character", "Nom du personnage.")
+}
+
+fn lookup_option() -> CreateCommandOption {
+    text_option("lookup", "Nom de personnage ou account_id.")
+}
+
+fn guild_option() -> CreateCommandOption {
+    text_option("guild", "Nom de guilde.")
+}
+
+fn item_option() -> CreateCommandOption {
+    text_option("item", "Nom partiel ou ID de l'item.")
+}
+
+fn message_option() -> CreateCommandOption {
+    text_option("message", "Message à envoyer.")
+}
+
+fn limit_option() -> CreateCommandOption {
+    CreateCommandOption::new(
+        CommandOptionType::Integer,
+        "limit",
+        "Nombre maximum de lignes à afficher.",
+    )
+    .min_int_value(1)
+    .required(false)
 }

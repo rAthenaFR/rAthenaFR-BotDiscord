@@ -788,7 +788,7 @@ pub fn castles_embed(castles: &[CastleSummary], requested_limit: u32) -> CreateE
         "Châteaux rAthenaFR",
         "Propriétaires de châteaux et données économiques depuis la base de données.",
     )
-    .field("Résumé", list_summary(&list, "castles"), false)
+    .field("Résumé", list_summary(&list, "châteaux"), false)
     .field("Châteaux", list.value, false)
 }
 
@@ -868,7 +868,7 @@ pub fn guild_alliances_embed(
         "Alliances de guilde rAthenaFR",
         format!("Alliances et oppositions de la guilde `{}`.", guild_name),
     )
-    .field("Résumé", list_summary(&list, "guild relations"), false)
+    .field("Résumé", list_summary(&list, "relations de guilde"), false)
     .field("Relations", list.value, false)
 }
 
@@ -898,7 +898,11 @@ pub fn guild_skills_embed(
         "Compétences de guilde rAthenaFR",
         format!("Compétences apprises par la guilde `{}`.", guild_name),
     )
-    .field("Résumé", list_summary(&list, "guild skills"), false)
+    .field(
+        "Résumé",
+        list_summary(&list, "compétences de guilde"),
+        false,
+    )
     .field("Compétences", list.value, false)
 }
 
@@ -1504,7 +1508,7 @@ pub fn who_sell_embed(
 
     let list = limited_list(sellers, requested_limit, |index, seller| {
         format!(
-            "`{:>2}.` **{}** — `{}` zeny x`{}` — `{}` at `{}` ({}, {})",
+            "`{:>2}.` **{}** — `{}` zeny x`{}` — `{}` sur `{}` ({}, {})",
             index + 1,
             seller.merchant_name,
             format_number(seller.price),
@@ -1537,7 +1541,7 @@ pub fn who_buy_embed(item_id: i64, buyers: &[MarketBuyEntry], requested_limit: u
 
     let list = limited_list(buyers, requested_limit, |index, buyer| {
         format!(
-            "`{:>2}.` **{}** — `{}` zeny x`{}` — `{}` at `{}` ({}, {})",
+            "`{:>2}.` **{}** — `{}` zeny x`{}` — `{}` sur `{}` ({}, {})",
             index + 1,
             buyer.buyer_name,
             format_number(buyer.price),
@@ -1668,7 +1672,7 @@ pub fn buyers_embed(stores: &[BuyingStoreEntry], requested_limit: u32) -> Create
 
 pub fn staff_only_embed() -> CreateEmbed {
     error_embed(
-        "Cette commande est réservée au staff. Configure `RATHENAFR_STAFF_ROLE_IDS` avec les IDs des rôles Discord autorisés à utiliser les commandes de compte.",
+        "Vous n’avez pas la permission d’exécuter cette commande. Vérifiez les rôles Discord configurés avec `RATHENAFR_*_ROLE_IDS`.",
     )
 }
 
@@ -1682,13 +1686,28 @@ pub fn missing_database_table_embed(table_name: &str) -> CreateEmbed {
     )
 }
 
+pub fn text_embed(title: &str, description: impl Into<String>) -> CreateEmbed {
+    info_embed(title, description)
+}
+
+pub fn success_message_embed(title: &str, description: impl Into<String>) -> CreateEmbed {
+    success_embed(title, description)
+}
+
+pub fn command_disabled_embed(command_path: &str) -> CreateEmbed {
+    warning_embed(
+        "Commande désactivée",
+        format!("La commande `{command_path}` est désactivée par configuration."),
+    )
+}
+
 pub fn error_embed(message: &str) -> CreateEmbed {
     base_embed("Erreur du bot rAthenaFR", message, COLOR_ERROR)
 }
 
 fn service_status_lines(services: &[RAthenaFrServiceStatus]) -> String {
     if services.is_empty() {
-        return "Aucun endpoint de service rAthena configuré.".to_string();
+        return "Aucun service rAthena n’est configuré.".to_string();
     }
 
     services

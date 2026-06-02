@@ -1,88 +1,114 @@
 # Commandes Discord
 
-Documentation française de rAthenaFR Discord Bot pour le projet rAthena.
+Cette page décrit les packs de commandes publics et staff de la première version de release.
 
-> [!NOTE]
-> Les réponses publiques utilisent des embeds. Les commandes staff répondent en éphémère quand elles exposent des informations sensibles.
+!!! note "Sous-commandes Discord"
+    Les commandes écrites avec un espace sont des sous-commandes Discord. Par exemple, `/guild members` correspond à la commande racine `/guild` avec la sous-commande `members`.
 
 ## Commandes publiques
 
 | Commande | Description |
 |---|---|
-| `/status` | État des services et compteurs SQL. |
-| `/online` | Personnages connectés. |
-| `/top` | Classement par niveau. |
-| `/player name:` | Profil d’un personnage. |
-| `/guilds` | Classement des guildes. |
-| `/search query: category:` | Recherche par catégorie avec aperçus d’images : tout, joueurs, items ou monstres. |
-| `/createaccount username: password: sex: birthdate: email:` | Création de compte si activée. |
-| `/topzeny` | Classement zeny. |
-| `/guild name:` | Détail d’une guilde. |
-| `/guildmembers name:` | Membres d’une guilde. |
-| `/classes` | Répartition par classes. |
-| `/mapstats online_only:` | Répartition par cartes. |
-| `/maponline map:` | Personnages connectés sur une carte. |
-| `/party name:` | Détail d’un groupe. |
-| `/partymembers name:` | Membres d’un groupe. |
-| `/homunculus character:` | Homoncule d’un personnage. |
-| `/pet character:` | Familier d’un personnage. |
-| `/zeny` | Statistiques zeny visibles. |
-| `/castles` | Liste des châteaux. |
-| `/castle castle_id:` | Détail d’un château. |
-| `/guildalliances name:` | Alliances et oppositions d’une guilde. |
-| `/guildskills name:` | Compétences d’une guilde. |
-| `/homunculustop` | Classement des homoncules. |
-| `/pettop` | Classement des familiers. |
-| `/queststats quest_id:` | Statistiques d’une quête. |
-| `/whosell item_id:` | Vendeurs d’un objet. |
-| `/whobuy item_id:` | Acheteurs d’un objet. |
-| `/market item_id:` | Résumé du marché. |
-| `/venders` | Boutiques de vente actives. |
-| `/buyers` | Boutiques d’achat actives. |
-
-La recherche d’objets et de monstres utilise les tables SQL `item_db`, `item_db_re`, `mob_db` et `mob_db_re` quand elles existent dans la base cible.
-Les aperçus d’images sont affichés dans le même embed que les résultats. Les chemins relatifs utilisent `RATHENAFR_ASSETS_BASE_URL`; les URLs absolues configurées sont utilisées directement.
-Pour les monstres FluxCP (`data/monsters/{monster_id}.png`), le bot précharge automatiquement la page `?module=monster&action=view&id=...` avant de répondre afin que FluxCP génère le cache local si nécessaire.
-Sans URL exploitable, `/search` affiche les résultats sans image.
-
-> [!TIP]
-> `/search` accepte `category` avec les choix `Tout`, `Joueurs`, `Items` et `Monstres`. Choisir une catégorie évite de requêter les autres sources et affiche un aperçu d’image pour le premier résultat de chaque type trouvé.
+| `/server` | Résumé serveur : comptes, personnages, guildes, joueurs en ligne et services. |
+| `/online count` | Nombre de joueurs connectés. |
+| `/online list` | Liste des joueurs connectés si `RATHENAFR_ONLINE_LIST_PUBLIC=true`. |
+| `/online map` | Répartition des joueurs connectés par map. |
+| `/player name:` | Profil public d’un personnage. |
+| `/guild info name:` | Informations publiques d’une guilde. |
+| `/guild members name:` | Membres publics d’une guilde. |
+| `/castle list` | Châteaux et propriétaires. |
+| `/castle info castle_id:` | Détail d’un château. |
+| `/item info item:` | Fiche item par nom ou ID. |
+| `/item search text:` | Recherche d’items par nom partiel. |
+| `/who-drops item:` | Monstres qui drop un item. |
+| `/mob info mob:` | Fiche monstre par nom ou ID. |
+| `/mob drops mob:` | Drops d’un monstre. |
+| `/mvp list` | Liste des MVP si les colonnes MVP existent. |
+| `/mvp last` | Dernières lignes de `mvplog` si la table est disponible. |
+| `/mvp top` | Vue compacte depuis `mvplog` si la table est disponible. |
+| `/top level` | Classement par base level. |
+| `/top job` | Classement par job level. |
+| `/top guild` | Classement des guildes. |
+| `/top zeny` | Classement zeny selon `RATHENAFR_TOP_ZENY_MODE`. |
+| `/rank name:` | Positions publiques d’un personnage. |
+| `/market info item:` | Résumé achat/vente si les tables market existent. |
+| `/market sell item:` | Ventes actives. |
+| `/market buy item:` | Buying stores actifs. |
+| `/createaccount username: password: sex: birthdate: email:` | Commande conservée ; création de compte si elle est activée. |
 
 ## Commandes staff
 
-Ces commandes exigent un rôle présent dans `RATHENAFR_STAFF_ROLE_IDS`, `RATHENAFR_ADMIN_ROLE_IDS` ou `RATHENAFR_OWNER_ROLE_IDS`.
+Les commandes staff répondent en éphémère lorsqu’elles affichent des données sensibles. Les rôles sont configurables avec :
 
-> [!WARNING]
-> `/accountmanage` peut éditer ou supprimer un compte. L’action `delete` supprime le compte complet et exige une confirmation exacte `DELETE-ALL-ID`. Consulte `ACCOUNT_MANAGEMENT_FR.md` avant usage.
+- `RATHENAFR_HELPER_ROLE_IDS`
+- `RATHENAFR_MODERATOR_ROLE_IDS`
+- `RATHENAFR_GM_ROLE_IDS`
+- `RATHENAFR_ADMIN_ROLE_IDS`
+- `RATHENAFR_OWNER_ROLE_IDS`
+
+| Commande | Rôle minimum | Description |
+|---|---:|---|
+| `/staff player character:` | Helper | Fiche complète d’un personnage. |
+| `/staff account character:` | Helper | Compte lié au personnage, sans password, hash ni e-mail privé. |
+| `/staff chars lookup:` | Helper | Personnages d’un compte ou du compte lié à un personnage. |
+| `/staff inventory character:` | GM | Inventaire. |
+| `/staff equipment character:` | GM | Équipement porté. |
+| `/staff cart character:` | GM | Cart. |
+| `/staff storage character:` | GM | Storage du compte. |
+| `/staff guildstorage guild:` | GM | Coffre de guilde. |
+| `/staff whohas item:` | GM | Propriétaires d’un item. |
+| `/staff item-search item:` | GM | Recherche d’un item dans les conteneurs. |
+| `/staff zeny character:` | GM | Zeny d’un personnage. |
+| `/staff zenylog character:` | GM | Logs zeny si disponibles. |
+| `/staff picklog character:` | GM | Logs items si disponibles. |
+| `/staff trade-log character:` | GM | Vue depuis les logs items si disponibles. |
+| `/staff mvp-log character:` | GM | Logs MVP du joueur si disponibles. |
+| `/staff loginlog character:` | Admin | Logs de connexion. |
+| `/staff ip-accounts character:` | Admin | Contexte `loginlog` avec IP masquées. |
+| `/staff multiaccount character:` | Admin | Contexte multi-compte depuis `loginlog`. |
+| `/staff banned` | Admin | Comptes bannis ou bloqués. |
+
+## Modération, debug, audit et base de données
+
+| Commande | Rôle minimum | Description |
+|---|---:|---|
+| `/mod chatlog character:` | Moderator | Messages récents si `chatlog` existe. |
+| `/mod chat-search text:` | Moderator | Recherche compacte dans `chatlog`. |
+| `/mod report-context character:` | Moderator | Position et logs récents. |
+| `/mod branchlog character:` | Moderator | Dead Branch/Bloody Branch si `branchlog` existe. |
+| `/debug quest character:` | GM par défaut | Quêtes du personnage. |
+| `/debug char-vars character:` | GM par défaut | Variables personnage. |
+| `/debug acc-vars character:` | GM par défaut | Variables compte. |
+| `/audit atcommands gm:` | Admin par défaut | Commandes GM utilisées. |
+| `/audit item-created` | Admin par défaut | Vue depuis `picklog`. |
+| `/audit zeny-created` | Admin par défaut | Vue depuis `zenylog`. |
+| `/audit gm-activity gm:` | Admin par défaut | Activité GM depuis `atcommandlog`. |
+| `/db health` | Owner | Tables présentes, tables manquantes et logs actifs. |
+| `/db tables` | Owner | Tables détectées. |
+| `/db count` | Owner | Nombre de lignes par table utile. |
+| `/db logs-size` | Owner | Volume des logs SQL. |
+| `/db last-update` | Owner | Dernières entrées `sql_updates` si la table est disponible. |
+
+## Commande `/gmmsg`
 
 | Commande | Description |
 |---|---|
-| `/charquests` | Quêtes d’un personnage. |
-| `/charequipment` | Équipement d’un personnage. |
-| `/charinventory` | Inventaire d’un personnage. |
-| `/itemcount` | Comptage global d’un objet. |
-| `/itemowners` | Propriétaires visibles d’un objet. |
-| `/accountlist page: limit:` | Liste GM paginée des comptes créés dans `login`. |
-| `/accountoverview` | Résumé sûr d’un compte. |
-| `/accountmanage action:edit ...` | Édition des champs autorisés d’un compte par un GM/staff. |
-| `/accountmanage action:delete confirm:DELETE-ALL-ID` | Suppression complète d’un compte par un GM/staff. |
-| `/banlist` | Comptes bloqués ou bannis. |
-| `/accountchars` | Personnages d’un compte. |
-| `/accountstatus` | Statut sûr d’un compte. |
+| `/gmmsg server message:` | Message global serveur via GameBridge. |
+| `/gmmsg map map: message:` | Message map si le bridge le supporte. |
+| `/gmmsg blue message:` | Annonce bleue si elle est supportée. |
+| `/gmmsg color hex: message:` | Annonce couleur. `hex` doit être au format `RRGGBB`. |
+| `/gmmsg test message:` | Test et log uniquement, sans envoi en jeu. |
 
-## Déploiement des commandes
+!!! warning "Bridge en jeu"
+    `/gmmsg` n’utilise pas SQL. Sans bridge map-server configuré, la commande répond que le bridge in-game n’est pas configuré. Le mode `test` reste utile pour valider les permissions et les logs staff.
 
-Après tout changement de nom, description ou option :
+## Anciennes commandes retirées
 
-```bash
-cargo run -- --deploy
-```
+Les anciens packs ont été retirés du registre Discord : `/status`, `/guilds`, `/guildmembers`, `/search`, `/topzeny`, `/classes`, `/mapstats`, `/maponline`, `/party`, `/partymembers`, `/homunculus`, `/pet`, `/zeny`, `/castles`, `/guildalliances`, `/guildskills`, `/homunculustop`, `/pettop`, `/queststats`, `/whosell`, `/whobuy`, `/venders`, `/buyers`, `/charquests`, `/charequipment`, `/charinventory`, `/itemcount`, `/itemowners`, `/accountlist`, `/accountoverview`, `/accountmanage`, `/banlist`, `/accountchars` et `/accountstatus`.
 
-Avec Docker :
+!!! tip "Redéploiement Discord"
+    Redéploie les commandes après mise à jour pour retirer les anciennes commandes côté Discord :
 
-```bash
-docker compose run --rm rathenafr-discord-bot --deploy
-```
-
-> [!IMPORTANT]
-> Modifier uniquement le rendu des embeds ne nécessite pas de redéploiement des commandes slash. Un rebuild/redémarrage du bot suffit.
+    ```bash
+    cargo run -- --deploy
+    ```

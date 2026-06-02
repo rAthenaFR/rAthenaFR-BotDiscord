@@ -11,6 +11,8 @@ pub struct AppConfig {
     pub assets: AssetConfig,
     pub cache: CacheConfig,
     pub account_commands: AccountCommandsConfig,
+    pub commands: CommandConfig,
+    pub game_bridge: GameBridgeConfig,
 }
 
 #[derive(Debug, Clone)]
@@ -18,9 +20,13 @@ pub struct DiscordConfig {
     pub token: String,
     pub application_id: u64,
     pub guild_id: u64,
+    pub helper_role_ids: Vec<u64>,
+    pub moderator_role_ids: Vec<u64>,
+    pub gm_role_ids: Vec<u64>,
     pub staff_role_ids: Vec<u64>,
     pub admin_role_ids: Vec<u64>,
     pub owner_role_ids: Vec<u64>,
+    pub staff_log_channel_id: Option<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -77,10 +83,56 @@ pub struct AccountCommandsConfig {
     pub password_mode: AccountPasswordMode,
 }
 
+#[derive(Debug, Clone)]
+pub struct CommandConfig {
+    pub public_pack_enabled: bool,
+    pub staff_pack_enabled: bool,
+    pub online_list_public: bool,
+    pub top_zeny_mode: TopZenyMode,
+    pub disabled_commands: Vec<String>,
+    pub item_table_name: String,
+    pub mob_table_name: String,
+    pub optional_vending_enabled: bool,
+    pub optional_buyingstore_enabled: bool,
+    pub optional_logs_enabled: bool,
+    pub gmmsg_min_role: StaffRole,
+    pub debug_min_role: StaffRole,
+    pub audit_min_role: StaffRole,
+}
+
+#[derive(Debug, Clone)]
+pub struct GameBridgeConfig {
+    pub mode: GameBridgeMode,
+    pub max_message_length: usize,
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum AccountPasswordMode {
     Plain,
     Md5,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum TopZenyMode {
+    Enabled,
+    Anonymized,
+    Disabled,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum GameBridgeMode {
+    Disabled,
+    Test,
+    Bridge,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
+pub enum StaffRole {
+    Helper,
+    Moderator,
+    Gm,
+    Admin,
+    Owner,
 }
 
 impl AppConfig {
@@ -93,6 +145,8 @@ impl AppConfig {
             assets: AssetConfig::from_env()?,
             cache: CacheConfig::from_env()?,
             account_commands: AccountCommandsConfig::from_env()?,
+            commands: CommandConfig::from_env()?,
+            game_bridge: GameBridgeConfig::from_env()?,
         })
     }
 
@@ -105,6 +159,8 @@ impl AppConfig {
             assets: AssetConfig::from_env()?,
             cache: CacheConfig::from_env()?,
             account_commands: AccountCommandsConfig::from_env()?,
+            commands: CommandConfig::from_env()?,
+            game_bridge: GameBridgeConfig::from_env()?,
         })
     }
 }
@@ -115,6 +171,13 @@ impl DiscordConfig {
             token: required("DISCORD_TOKEN")?,
             application_id: parse_discord_application_id()?,
             guild_id: parse_required("DISCORD_GUILD_ID")?,
+            helper_role_ids: parse_role_ids(&[
+                "RATHENAFR_HELPER_ROLE_IDS",
+                "RATHENAFR_STAFF_ROLE_IDS",
+                "DISCORD_STAFF_ROLE_IDS",
+            ])?,
+            moderator_role_ids: parse_role_ids(&["RATHENAFR_MODERATOR_ROLE_IDS"])?,
+            gm_role_ids: parse_role_ids(&["RATHENAFR_GM_ROLE_IDS"])?,
             staff_role_ids: parse_role_ids(&[
                 "RATHENAFR_STAFF_ROLE_IDS",
                 "DISCORD_STAFF_ROLE_IDS",
@@ -127,6 +190,7 @@ impl DiscordConfig {
                 "RATHENAFR_OWNER_ROLE_IDS",
                 "DISCORD_OWNER_ROLE_IDS",
             ])?,
+            staff_log_channel_id: parse_optional("RATHENAFR_STAFF_LOG_CHANNEL_ID")?,
         })
     }
 }
@@ -319,6 +383,85 @@ impl AccountCommandsConfig {
     }
 }
 
+impl CommandConfig {
+    fn from_env() -> Result<Self> {
+        Self::from_lookup(&optional)
+    }
+
+    fn from_lookup<F>(lookup: &F) -> Result<Self>
+    where
+        F: Fn(&str) -> Option<String>,
+    {
+        Ok(Self {
+            public_pack_enabled: parse_bool_optional_from(lookup, "RATHENAFR_PUBLIC_PACK_ENABLED")?
+                .unwrap_or(true),
+            staff_pack_enabled: parse_bool_optional_from(lookup, "RATHENAFR_STAFF_PACK_ENABLED")?
+                .unwrap_or(true),
+            online_list_public: parse_bool_optional_from(lookup, "RATHENAFR_ONLINE_LIST_PUBLIC")?
+                .unwrap_or(false),
+            top_zeny_mode: parse_top_zeny_mode(lookup)?,
+            disabled_commands: parse_csv_strings(lookup, "RATHENAFR_DISABLED_COMMANDS"),
+            item_table_name: parse_table_choice(
+                lookup,
+                "RATHENAFR_ITEM_DB_TABLE",
+                "item_db",
+                &["item_db", "item_db_re"],
+            )?,
+            mob_table_name: parse_table_choice(
+                lookup,
+                "RATHENAFR_MOB_DB_TABLE",
+                "mob_db",
+                &["mob_db", "mob_db_re"],
+            )?,
+            optional_vending_enabled: parse_bool_optional_from(
+                lookup,
+                "RATHENAFR_OPTIONAL_VENDING_ENABLED",
+            )?
+            .unwrap_or(true),
+            optional_buyingstore_enabled: parse_bool_optional_from(
+                lookup,
+                "RATHENAFR_OPTIONAL_BUYINGSTORE_ENABLED",
+            )?
+            .unwrap_or(true),
+            optional_logs_enabled: parse_bool_optional_from(
+                lookup,
+                "RATHENAFR_OPTIONAL_LOGS_ENABLED",
+            )?
+            .unwrap_or(true),
+            gmmsg_min_role: parse_staff_role(lookup, "RATHENAFR_GMMSG_MIN_ROLE")?
+                .unwrap_or(StaffRole::Gm),
+            debug_min_role: parse_staff_role(lookup, "RATHENAFR_DEBUG_MIN_ROLE")?
+                .unwrap_or(StaffRole::Gm),
+            audit_min_role: parse_staff_role(lookup, "RATHENAFR_AUDIT_MIN_ROLE")?
+                .unwrap_or(StaffRole::Admin),
+        })
+    }
+
+    pub fn command_enabled(&self, command_path: &str) -> bool {
+        !self
+            .disabled_commands
+            .iter()
+            .any(|disabled| disabled.eq_ignore_ascii_case(command_path))
+    }
+}
+
+impl GameBridgeConfig {
+    fn from_env() -> Result<Self> {
+        Self::from_lookup(&optional)
+    }
+
+    fn from_lookup<F>(lookup: &F) -> Result<Self>
+    where
+        F: Fn(&str) -> Option<String>,
+    {
+        Ok(Self {
+            mode: parse_game_bridge_mode(lookup)?,
+            max_message_length: parse_optional_from(lookup, "RATHENAFR_GMMSG_MAX_LENGTH")?
+                .unwrap_or(180),
+        })
+    }
+}
+
 fn parse_account_password_mode<F>(lookup: &F) -> Result<AccountPasswordMode>
 where
     F: Fn(&str) -> Option<String>,
@@ -334,6 +477,102 @@ where
             "Valeur invalide pour la variable d’environnement : RATHENAFR_ACCOUNT_PASSWORD_MODE. Valeurs attendues : plain ou md5."
         )),
     }
+}
+
+fn parse_top_zeny_mode<F>(lookup: &F) -> Result<TopZenyMode>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    let Some(value) = lookup_value(lookup, "RATHENAFR_TOP_ZENY_MODE") else {
+        return Ok(TopZenyMode::Enabled);
+    };
+
+    match value.to_ascii_lowercase().as_str() {
+        "enabled" | "on" | "true" => Ok(TopZenyMode::Enabled),
+        "anonymized" | "anonymous" | "anon" => Ok(TopZenyMode::Anonymized),
+        "disabled" | "off" | "false" => Ok(TopZenyMode::Disabled),
+        _ => Err(anyhow!(
+            "Valeur invalide pour RATHENAFR_TOP_ZENY_MODE. Valeurs attendues : enabled, anonymized ou disabled."
+        )),
+    }
+}
+
+fn parse_game_bridge_mode<F>(lookup: &F) -> Result<GameBridgeMode>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    let Some(value) = lookup_value(lookup, "RATHENAFR_GMMSG_MODE") else {
+        return Ok(GameBridgeMode::Disabled);
+    };
+
+    match value.to_ascii_lowercase().as_str() {
+        "disabled" | "off" | "false" => Ok(GameBridgeMode::Disabled),
+        "test" | "log" => Ok(GameBridgeMode::Test),
+        "bridge" | "enabled" | "on" | "true" => Ok(GameBridgeMode::Bridge),
+        _ => Err(anyhow!(
+            "Valeur invalide pour RATHENAFR_GMMSG_MODE. Valeurs attendues : disabled, test ou bridge."
+        )),
+    }
+}
+
+fn parse_staff_role<F>(lookup: &F, name: &str) -> Result<Option<StaffRole>>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    let Some(value) = lookup_value(lookup, name) else {
+        return Ok(None);
+    };
+
+    match value.to_ascii_lowercase().as_str() {
+        "helper" => Ok(Some(StaffRole::Helper)),
+        "moderator" | "mod" => Ok(Some(StaffRole::Moderator)),
+        "gm" => Ok(Some(StaffRole::Gm)),
+        "admin" => Ok(Some(StaffRole::Admin)),
+        "owner" => Ok(Some(StaffRole::Owner)),
+        _ => Err(anyhow!(
+            "Valeur invalide pour {name}. Valeurs attendues : helper, moderator, gm, admin ou owner."
+        )),
+    }
+}
+
+fn parse_table_choice<F>(
+    lookup: &F,
+    name: &str,
+    default_value: &str,
+    allowed_values: &[&str],
+) -> Result<String>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    let value = lookup_value(lookup, name).unwrap_or_else(|| default_value.to_string());
+
+    if allowed_values
+        .iter()
+        .any(|allowed| allowed.eq_ignore_ascii_case(&value))
+    {
+        return Ok(value);
+    }
+
+    Err(anyhow!(
+        "Valeur invalide pour {name}. Valeurs attendues : {}.",
+        allowed_values.join(", ")
+    ))
+}
+
+fn parse_csv_strings<F>(lookup: &F, name: &str) -> Vec<String>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    lookup_value(lookup, name)
+        .map(|value| {
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|part| !part.is_empty())
+                .map(|part| part.to_ascii_lowercase())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn parse_discord_application_id() -> Result<u64> {
@@ -585,5 +824,41 @@ mod tests {
         .expect("account config");
 
         assert_eq!(config.password_mode, AccountPasswordMode::Md5);
+    }
+
+    #[test]
+    fn command_config_uses_release_defaults() {
+        let config = CommandConfig::from_lookup(&lookup(&[])).expect("command config");
+
+        assert!(config.public_pack_enabled);
+        assert!(config.staff_pack_enabled);
+        assert!(!config.online_list_public);
+        assert_eq!(config.top_zeny_mode, TopZenyMode::Enabled);
+        assert_eq!(config.item_table_name, "item_db");
+        assert_eq!(config.mob_table_name, "mob_db");
+        assert_eq!(config.gmmsg_min_role, StaffRole::Gm);
+        assert_eq!(config.audit_min_role, StaffRole::Admin);
+        assert!(config.command_enabled("staff inventory"));
+    }
+
+    #[test]
+    fn disabled_commands_are_case_insensitive() {
+        let config = CommandConfig::from_lookup(&lookup(&[(
+            "RATHENAFR_DISABLED_COMMANDS",
+            "staff inventory,top zeny",
+        )]))
+        .expect("command config");
+
+        assert!(!config.command_enabled("STAFF INVENTORY"));
+        assert!(!config.command_enabled("top zeny"));
+        assert!(config.command_enabled("staff player"));
+    }
+
+    #[test]
+    fn game_bridge_is_disabled_by_default() {
+        let config = GameBridgeConfig::from_lookup(&lookup(&[])).expect("bridge config");
+
+        assert_eq!(config.mode, GameBridgeMode::Disabled);
+        assert_eq!(config.max_message_length, 180);
     }
 }

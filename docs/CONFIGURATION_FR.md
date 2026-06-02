@@ -1,39 +1,86 @@
 # Configuration
 
-Documentation française de rAthenaFR Discord Bot pour le projet rAthena.
+Le projet conserve une configuration par variables d’environnement, chargées depuis l’environnement du processus ou depuis les fichiers `.env`, `.env.example` et `.env.docker.example`.
 
-> [!NOTE]
-> Les exemples complets sont dans `.env.example` et `.env.docker.example`. Cette page décrit le sens des variables, pas les secrets réels.
-
-## Variables Discord
+## Discord
 
 ```env
 DISCORD_TOKEN=replace_me
 DISCORD_CLIENT_ID=replace_me
 DISCORD_GUILD_ID=replace_me
+DISCORD_APPLICATION_ID=
 ```
 
-`DISCORD_GUILD_ID` permet de déployer les commandes slash sur un serveur Discord précis.
+`DISCORD_APPLICATION_ID` est optionnel. S’il est absent, le bot utilise `DISCORD_CLIENT_ID`.
 
-`DISCORD_APPLICATION_ID` est optionnel. Si la variable est absente, le bot utilise `DISCORD_CLIENT_ID`.
-
-> [!WARNING]
-> Ne commit jamais `DISCORD_TOKEN` ni un fichier `.env` réel.
-
-## Rôles Discord staff
+## Rôles staff
 
 ```env
-RATHENAFR_STAFF_ROLE_IDS=
+RATHENAFR_HELPER_ROLE_IDS=
+RATHENAFR_MODERATOR_ROLE_IDS=
+RATHENAFR_GM_ROLE_IDS=
 RATHENAFR_ADMIN_ROLE_IDS=
 RATHENAFR_OWNER_ROLE_IDS=
+RATHENAFR_STAFF_LOG_CHANNEL_ID=
 ```
 
-Les valeurs sont des IDs de rôles Discord séparés par des virgules. Laisse vide pour refuser les commandes staff.
+Les valeurs sont des IDs Discord séparés par des virgules. Les anciens alias `RATHENAFR_STAFF_ROLE_IDS`, `DISCORD_STAFF_ROLE_IDS`, `DISCORD_ADMIN_ROLE_IDS` et `DISCORD_OWNER_ROLE_IDS` restent acceptés pour compatibilité.
 
-Les anciens alias `DISCORD_STAFF_ROLE_IDS`, `DISCORD_ADMIN_ROLE_IDS` et `DISCORD_OWNER_ROLE_IDS` restent acceptés si les variables `RATHENAFR_*` correspondantes sont absentes.
+!!! tip "Rôles dédiés"
+    Utilise des rôles Discord dédiés au bot plutôt que des rôles trop larges. Cela permet de retirer un accès sans modifier l’organisation globale du serveur Discord.
 
-> [!IMPORTANT]
-> Les commandes staff, dont `/accountmanage`, sont refusées si aucun rôle staff/admin/owner n’est configuré.
+## Packs et commandes
+
+```env
+RATHENAFR_PUBLIC_PACK_ENABLED=true
+RATHENAFR_STAFF_PACK_ENABLED=true
+RATHENAFR_DISABLED_COMMANDS=
+RATHENAFR_ONLINE_LIST_PUBLIC=false
+RATHENAFR_TOP_ZENY_MODE=enabled
+RATHENAFR_DEFAULT_LIMIT=10
+RATHENAFR_MAX_LIMIT=25
+```
+
+`RATHENAFR_DISABLED_COMMANDS` accepte des chemins séparés par des virgules, par exemple `staff inventory,top zeny`.
+
+`RATHENAFR_TOP_ZENY_MODE` accepte :
+
+- `enabled`
+- `anonymized`
+- `disabled`
+
+## Tables optionnelles
+
+```env
+RATHENAFR_ITEM_DB_TABLE=item_db
+RATHENAFR_MOB_DB_TABLE=mob_db
+RATHENAFR_OPTIONAL_VENDING_ENABLED=true
+RATHENAFR_OPTIONAL_BUYINGSTORE_ENABLED=true
+RATHENAFR_OPTIONAL_LOGS_ENABLED=true
+```
+
+Les tables item/mob acceptent `item_db` ou `item_db_re`, et `mob_db` ou `mob_db_re`.
+
+## Configuration de `/gmmsg`
+
+```env
+RATHENAFR_GMMSG_MODE=disabled
+RATHENAFR_GMMSG_MAX_LENGTH=180
+RATHENAFR_GMMSG_MIN_ROLE=gm
+RATHENAFR_DEBUG_MIN_ROLE=gm
+RATHENAFR_AUDIT_MIN_ROLE=admin
+```
+
+Modes disponibles pour `/gmmsg` :
+
+- `disabled` : aucun envoi en jeu.
+- `test` : réponse et log uniquement.
+- `bridge` : utilisation de GameBridge.
+
+!!! warning "Transport GameBridge"
+    Aucun transport map-server concret n’est actif par défaut. Le mode `bridge` suppose qu’une implémentation GameBridge opérationnelle est disponible.
+
+`/gmmsg color` valide strictement `RRGGBB`. Les messages sont nettoyés et les mentions `@everyone`/`@here` sont neutralisées dans les logs Discord.
 
 ## Création de compte
 
@@ -42,24 +89,12 @@ RATHENAFR_ACCOUNT_CREATION_ENABLED=false
 RATHENAFR_ACCOUNT_PASSWORD_MODE=plain
 ```
 
-La commande `/createaccount` est déclarée dans Discord, mais elle refuse la création tant que cette variable n’est pas à `true`.
+`/createaccount` est conservée et déclarée. Elle refuse la création tant que `RATHENAFR_ACCOUNT_CREATION_ENABLED=false`.
 
-`RATHENAFR_ACCOUNT_PASSWORD_MODE` accepte `plain` ou `md5`. Sa valeur doit correspondre à la configuration du serveur login rAthena.
+!!! danger "Écriture SQL"
+    `/createaccount` est la seule commande conservée qui peut écrire en base. Elle nécessite `INSERT` sur `login` uniquement si elle est activée.
 
-Cette fonctionnalité écrit dans la table `login`. Elle nécessite donc les permissions SQL optionnelles décrites dans `docs/DATABASE_FR.md`.
-
-> [!CAUTION]
-> `/accountmanage` utilise aussi les permissions SQL de gestion de comptes pour éditer ou supprimer un compte. Consulte `docs/ACCOUNT_MANAGEMENT_FR.md` avant de l’activer.
-
-## Nom visible
-
-```env
-RATHENAFR_DISPLAY_NAME=rAthenaFR
-```
-
-Ce nom est utilisé dans le footer des embeds et dans les logs. Les titres et descriptions des commandes affichent `rAthena` par défaut.
-
-## Base de données
+## Base de données et services
 
 ```env
 RATHENAFR_DB_HOST=127.0.0.1
@@ -69,74 +104,18 @@ RATHENAFR_DB_USER=rathenafr_bot
 RATHENAFR_DB_PASSWORD=replace_me
 RATHENAFR_DB_MAX_CONNECTIONS=5
 RATHENAFR_DB_ACQUIRE_TIMEOUT_SECONDS=5
-```
-
-Utilise un compte SQL dédié avec uniquement `SELECT`.
-
-> [!TIP]
-> Ajoute les droits `INSERT`/`UPDATE`/`DELETE` seulement si tu utilises les commandes de compte.
-
-## Services rAthena
-
-```env
 RATHENAFR_SERVER_HOST=127.0.0.1
 RATHENAFR_LOGIN_PORT=6900
 RATHENAFR_CHAR_PORT=6121
 RATHENAFR_MAP_PORT=5121
 ```
 
-Des overrides existent : `RATHENAFR_LOGIN_HOST`, `RATHENAFR_CHAR_HOST`, `RATHENAFR_MAP_HOST`.
+Les commandes SQL de cette version sont en lecture seule, sauf `/createaccount` si elle est activée.
 
-Sur un serveur distant, ces hôtes doivent être joignables depuis le conteneur du bot. Utilise un réseau Docker partagé, une IP privée, un DNS privé ou un VPN.
-
-> [!WARNING]
-> N’expose pas les ports MariaDB/MySQL, login, char ou map directement sur Internet.
-
-## Images de recherche
-
-```env
-RATHENAFR_ASSETS_BASE_URL=https://panel.example.com
-RATHENAFR_ITEM_ICON_PATH=https://static.divine-pride.net/images/items/collection/{item_id}.png
-RATHENAFR_MONSTER_IMAGE_PATH=data/monsters/{monster_id}.png
-RATHENAFR_CHARACTER_IMAGE_PATH=https://static.divine-pride.net/images/jobs/{class_id}.png
-```
-
-`RATHENAFR_ASSETS_BASE_URL` sert uniquement aux chemins relatifs. Elle doit pointer vers une URL publique accessible par Discord, par exemple le FluxCP public. N’utilise pas `localhost` ou `127.0.0.1` pour les embeds Discord.
-
-`RATHENAFR_ITEM_ICON_PATH`, `RATHENAFR_MONSTER_IMAGE_PATH` et `RATHENAFR_CHARACTER_IMAGE_PATH` acceptent soit un chemin relatif au panel, soit une URL absolue. Les placeholders disponibles sont `{item_id}`, `{monster_id}`, `{sprite}`, `{class_id}`, `{gender}` et `{job}` selon le type d’image.
-
-Pour les monstres FluxCP, garde `data/monsters/{monster_id}.png`. Le bot précharge automatiquement la page du monstre avant de répondre pour laisser FluxCP générer le fichier local si le cache n’existe pas encore.
-
-Si ton FluxCP fournit les images localement, tu peux remplacer les fallbacks externes par des chemins serveur :
-
-```env
-RATHENAFR_ITEM_ICON_PATH=data/items/images/{item_id}.png
-RATHENAFR_CHARACTER_IMAGE_PATH=data/jobs/images/{gender}/{class_id}.gif
-```
-
-## Visibilité et limites
-
-```env
-RATHENAFR_HIDE_GM_CHARACTERS=false
-RATHENAFR_HIDE_GM_FROM_TOP=true
-RATHENAFR_HIDE_GM_GROUP_FROM_RANKING=60
-RATHENAFR_DEFAULT_LIMIT=10
-RATHENAFR_MAX_LIMIT=25
-```
-
-## Cache
+## Cache et logs runtime
 
 ```env
 RATHENAFR_CACHE_ENABLED=true
 RATHENAFR_CACHE_TTL_SECONDS=
-```
-
-Laisse `RATHENAFR_CACHE_TTL_SECONDS` vide pour utiliser les valeurs par défaut par commande.
-
-## Logs
-
-```env
 RUST_LOG=rathenafr_discord_bot=info,info
 ```
-
-Si `RUST_LOG` est absent, le bot utilise cette valeur par défaut.

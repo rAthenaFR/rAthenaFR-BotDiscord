@@ -1,17 +1,18 @@
 use crate::cache::{BotCache, StatusCacheEntry, TimedCache};
-use crate::config::{AppConfig, AssetConfig};
+use crate::config::{AppConfig, AssetConfig, GameBridgeMode, StaffRole, TopZenyMode};
 use crate::discord::embeds;
 use crate::infra::observability::CommandTimer;
 use crate::rathenafr::{
-    check_services, AccountUpdateRequest, BuyingStoreEntry, ClassDistributionEntry, DatabaseTable,
-    MapStatsEntry, MarketBuyEntry, MarketOverview, MarketSellEntry, RAthenaFrDatabase,
+    check_services, BroadcastMode, BuyingStoreEntry, ClassDistributionEntry, DatabaseTable,
+    GameBridge, MapStatsEntry, MarketBuyEntry, MarketOverview, MarketSellEntry, RAthenaFrDatabase,
     SearchResults, VendingStoreEntry,
 };
 use anyhow::Result;
 use serenity::all::{
-    async_trait, ActivityData, ApplicationId, Client, CommandDataOptionValue, CommandInteraction,
-    Context, CreateInteractionResponse, CreateInteractionResponseMessage, EventHandler,
-    GatewayIntents, Interaction, OnlineStatus, Ready,
+    async_trait, ActivityData, ApplicationId, ChannelId, Client, CommandDataOption,
+    CommandDataOptionValue, CommandInteraction, Context, CreateInteractionResponse,
+    CreateInteractionResponseMessage, CreateMessage, EventHandler, GatewayIntents, Interaction,
+    OnlineStatus, Ready,
 };
 use std::future::Future;
 use std::sync::Arc;
@@ -66,6 +67,7 @@ const VENDING_STORE_TABLES: &[DatabaseTable] =
 pub struct BotState {
     pub config: Arc<AppConfig>,
     pub database: Arc<RAthenaFrDatabase>,
+    pub game_bridge: GameBridge,
     pub cache: BotCache,
 }
 
@@ -76,6 +78,7 @@ pub async fn create_client(
     let intents = GatewayIntents::empty();
     let handler = Handler {
         state: Arc::new(BotState {
+            game_bridge: GameBridge::new(config.game_bridge.clone()),
             config,
             database,
             cache: BotCache::default(),
@@ -165,53 +168,1184 @@ impl EventHandler for Handler {
 
 impl Handler {
     async fn handle_command(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
+        let command_path = command_path(command);
+        if is_public_pack_root(&command.data.name)
+            && !self.state.config.commands.public_pack_enabled
+        {
+            return self
+                .respond_embed(
+                    context,
+                    command,
+                    embeds::command_disabled_embed("pack public"),
+                    true,
+                )
+                .await;
+        }
+        if is_staff_pack_root(&command.data.name) && !self.state.config.commands.staff_pack_enabled
+        {
+            return self
+                .respond_embed(
+                    context,
+                    command,
+                    embeds::command_disabled_embed("pack staff"),
+                    true,
+                )
+                .await;
+        }
+        if !self.state.config.commands.command_enabled(&command_path) {
+            return self
+                .respond_embed(
+                    context,
+                    command,
+                    embeds::command_disabled_embed(&command_path),
+                    true,
+                )
+                .await;
+        }
+
         match command.data.name.as_str() {
-            "status" => self.handle_status(context, command).await,
-            "online" => self.handle_online(context, command).await,
-            "top" => self.handle_top(context, command).await,
+            "server" => self.handle_server(context, command).await,
+            "online" => self.handle_online_pack(context, command).await,
+            "top" => self.handle_top_pack(context, command).await,
             "player" => self.handle_player(context, command).await,
-            "guilds" | "guildes" => self.handle_guilds(context, command).await,
-            "search" => self.handle_search(context, command).await,
             "createaccount" => self.handle_createaccount(context, command).await,
-            "topzeny" => self.handle_topzeny(context, command).await,
-            "guild" => self.handle_guild(context, command).await,
-            "guildmembers" => self.handle_guildmembers(context, command).await,
-            "classes" => self.handle_classes(context, command).await,
-            "mapstats" => self.handle_mapstats(context, command).await,
-            "maponline" => self.handle_maponline(context, command).await,
-            "party" => self.handle_party(context, command).await,
-            "partymembers" => self.handle_partymembers(context, command).await,
-            "homunculus" => self.handle_homunculus(context, command).await,
-            "pet" => self.handle_pet(context, command).await,
-            "zeny" => self.handle_zeny(context, command).await,
-            "castles" => self.handle_castles(context, command).await,
-            "castle" => self.handle_castle(context, command).await,
-            "guildalliances" => self.handle_guildalliances(context, command).await,
-            "guildskills" => self.handle_guildskills(context, command).await,
-            "homunculustop" => self.handle_homunculustop(context, command).await,
-            "pettop" => self.handle_pettop(context, command).await,
-            "queststats" => self.handle_queststats(context, command).await,
-            "whosell" => self.handle_whosell(context, command).await,
-            "whobuy" => self.handle_whobuy(context, command).await,
-            "market" => self.handle_market(context, command).await,
-            "venders" => self.handle_venders(context, command).await,
-            "buyers" => self.handle_buyers(context, command).await,
-            "charquests" => self.handle_charquests(context, command).await,
-            "charequipment" => self.handle_charequipment(context, command).await,
-            "charinventory" => self.handle_charinventory(context, command).await,
-            "itemcount" => self.handle_itemcount(context, command).await,
-            "itemowners" => self.handle_itemowners(context, command).await,
-            "accountlist" => self.handle_accountlist(context, command).await,
-            "accountoverview" => self.handle_accountoverview(context, command).await,
-            "accountmanage" => self.handle_accountmanage(context, command).await,
-            "banlist" => self.handle_banlist(context, command).await,
-            "accountchars" => self.handle_accountchars(context, command).await,
-            "accountstatus" => self.handle_accountstatus(context, command).await,
+            "guild" => self.handle_guild_pack(context, command).await,
+            "castle" => self.handle_castle_pack(context, command).await,
+            "item" => self.handle_item_pack(context, command).await,
+            "who-drops" => self.handle_who_drops(context, command).await,
+            "mob" => self.handle_mob_pack(context, command).await,
+            "mvp" => self.handle_mvp_pack(context, command).await,
+            "rank" => self.handle_rank(context, command).await,
+            "market" => self.handle_market_pack(context, command).await,
+            "staff" => self.handle_staff_pack(context, command).await,
+            "mod" => self.handle_mod_pack(context, command).await,
+            "debug" => self.handle_debug_pack(context, command).await,
+            "audit" => self.handle_audit_pack(context, command).await,
+            "db" => self.handle_db_pack(context, command).await,
+            "gmmsg" => self.handle_gmmsg_pack(context, command).await,
             _ => {
                 self.respond_error(context, command, "Commande inconnue.")
                     .await
             }
         }
+    }
+
+    async fn handle_server(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
+        self.handle_status(context, command).await
+    }
+
+    async fn handle_online_pack(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        match subcommand_name(command).unwrap_or("count") {
+            "count" => {
+                let status = self
+                    .state
+                    .database
+                    .database_status(self.state.config.display.public_character_group_threshold())
+                    .await?;
+                self.respond_embed(
+                    context,
+                    command,
+                    embeds::text_embed(
+                        "Joueurs connectés",
+                        format!("`{}` joueur(s) connecté(s).", status.online_characters),
+                    ),
+                    false,
+                )
+                .await
+            }
+            "list" => {
+                if !self.state.config.commands.online_list_public {
+                    return self
+                        .respond_error(
+                            context,
+                            command,
+                            "La liste publique des joueurs connectés est désactivée.",
+                        )
+                        .await;
+                }
+
+                self.handle_online(context, command).await
+            }
+            "map" => {
+                let (display_limit, query_limit) = self.list_limits(command);
+                let entries = self
+                    .state
+                    .database
+                    .map_stats(
+                        self.state.config.display.public_character_group_threshold(),
+                        true,
+                        query_limit,
+                    )
+                    .await?;
+
+                self.respond_embed(
+                    context,
+                    command,
+                    embeds::map_stats_embed(&entries, true, display_limit),
+                    false,
+                )
+                .await
+            }
+            _ => {
+                self.respond_error(context, command, "Sous-commande /online inconnue.")
+                    .await
+            }
+        }
+    }
+
+    async fn handle_top_pack(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
+        match subcommand_name(command).unwrap_or("level") {
+            "level" => self.handle_top(context, command).await,
+            "job" => {
+                let (display_limit, query_limit) = self.list_limits(command);
+                let entries = self
+                    .state
+                    .database
+                    .top_characters_by_job(
+                        self.state.config.display.ranking_group_threshold(),
+                        query_limit,
+                    )
+                    .await?;
+
+                self.respond_embed(
+                    context,
+                    command,
+                    embeds::ranking_embed(&entries, display_limit),
+                    false,
+                )
+                .await
+            }
+            "guild" => self.handle_guilds(context, command).await,
+            "zeny" => self.handle_top_zeny_configured(context, command).await,
+            _ => {
+                self.respond_error(context, command, "Sous-commande /top inconnue.")
+                    .await
+            }
+        }
+    }
+
+    async fn handle_top_zeny_configured(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        match self.state.config.commands.top_zeny_mode {
+            TopZenyMode::Disabled => {
+                self.respond_error(context, command, "Le classement zeny est désactivé.")
+                    .await
+            }
+            TopZenyMode::Enabled => self.handle_topzeny(context, command).await,
+            TopZenyMode::Anonymized => {
+                let (display_limit, query_limit) = self.list_limits(command);
+                let mut entries = self
+                    .state
+                    .database
+                    .top_zeny(
+                        self.state.config.display.ranking_group_threshold(),
+                        query_limit,
+                    )
+                    .await?;
+
+                for entry in &mut entries {
+                    entry.name = format!("Personnage #{}", entry.rank);
+                }
+
+                self.respond_embed(
+                    context,
+                    command,
+                    embeds::top_zeny_embed(&entries, display_limit),
+                    false,
+                )
+                .await
+            }
+        }
+    }
+
+    async fn handle_guild_pack(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        match subcommand_name(command).unwrap_or("info") {
+            "info" => self.handle_guild(context, command).await,
+            "members" => self.handle_guildmembers(context, command).await,
+            _ => {
+                self.respond_error(context, command, "Sous-commande /guild inconnue.")
+                    .await
+            }
+        }
+    }
+
+    async fn handle_castle_pack(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        match subcommand_name(command).unwrap_or("info") {
+            "list" => self.handle_castles(context, command).await,
+            "info" => self.handle_castle(context, command).await,
+            _ => {
+                self.respond_error(context, command, "Sous-commande /castle inconnue.")
+                    .await
+            }
+        }
+    }
+
+    async fn handle_item_pack(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        match subcommand_name(command).unwrap_or("info") {
+            "info" => {
+                let Some(item) = string_option(command, "item") else {
+                    return self
+                        .respond_error(context, command, "Option obligatoire manquante : item.")
+                        .await;
+                };
+                let lines = self
+                    .state
+                    .database
+                    .item_detail_lines(item, &self.state.config.commands.item_table_name)
+                    .await?;
+                match lines {
+                    Some(lines) => {
+                        self.respond_lines(context, command, "Fiche item", lines, false)
+                            .await
+                    }
+                    None => {
+                        self.respond_error(context, command, "Aucun item n’a été trouvé.")
+                            .await
+                    }
+                }
+            }
+            "search" => {
+                let Some(text) = string_option(command, "text") else {
+                    return self
+                        .respond_error(context, command, "Option obligatoire manquante : text.")
+                        .await;
+                };
+                let (display_limit, query_limit) = self.list_limits(command);
+                let items = self.state.database.search_items(text, query_limit).await?;
+                let lines = items
+                    .iter()
+                    .take(display_limit as usize)
+                    .map(|item| {
+                        format!(
+                            "`{}` - {} (`{}`) - `{}`",
+                            item.item_id, item.display_name, item.aegis_name, item.item_type
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                self.respond_lines_or_empty(
+                    context,
+                    command,
+                    "Recherche items",
+                    lines,
+                    "Aucun item n’a été trouvé.",
+                    false,
+                )
+                .await
+            }
+            _ => {
+                self.respond_error(context, command, "Sous-commande /item inconnue.")
+                    .await
+            }
+        }
+    }
+
+    async fn handle_who_drops(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        let Some(item) = string_option(command, "item") else {
+            return self
+                .respond_error(context, command, "Option obligatoire manquante : item.")
+                .await;
+        };
+        let (_display_limit, query_limit) = self.list_limits(command);
+        let lines = self
+            .state
+            .database
+            .who_drops_lines(
+                item,
+                &self.state.config.commands.mob_table_name,
+                query_limit,
+            )
+            .await?;
+        match lines {
+            Some(lines) => {
+                self.respond_lines(context, command, "Who drops", lines, false)
+                    .await
+            }
+            None => {
+                self.respond_error(context, command, "Aucun item n’a été trouvé.")
+                    .await
+            }
+        }
+    }
+
+    async fn handle_mob_pack(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
+        match subcommand_name(command).unwrap_or("info") {
+            "info" => {
+                let Some(mob) = string_option(command, "mob") else {
+                    return self
+                        .respond_error(context, command, "Option obligatoire manquante : mob.")
+                        .await;
+                };
+                let lines = self
+                    .state
+                    .database
+                    .mob_detail_lines(mob, &self.state.config.commands.mob_table_name)
+                    .await?;
+                match lines {
+                    Some(lines) => {
+                        self.respond_lines(context, command, "Fiche monstre", lines, false)
+                            .await
+                    }
+                    None => {
+                        self.respond_error(context, command, "Aucun monstre n’a été trouvé.")
+                            .await
+                    }
+                }
+            }
+            "drops" => {
+                let Some(mob) = string_option(command, "mob") else {
+                    return self
+                        .respond_error(context, command, "Option obligatoire manquante : mob.")
+                        .await;
+                };
+                let (_display_limit, query_limit) = self.list_limits(command);
+                let lines = self
+                    .state
+                    .database
+                    .mob_drop_lines(mob, &self.state.config.commands.mob_table_name, query_limit)
+                    .await?;
+                match lines {
+                    Some(lines) => {
+                        self.respond_lines(context, command, "Drops monstre", lines, false)
+                            .await
+                    }
+                    None => {
+                        self.respond_error(context, command, "Aucun monstre n’a été trouvé.")
+                            .await
+                    }
+                }
+            }
+            _ => {
+                self.respond_error(context, command, "Sous-commande /mob inconnue.")
+                    .await
+            }
+        }
+    }
+
+    async fn handle_mvp_pack(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
+        let (_display_limit, query_limit) = self.list_limits(command);
+        match subcommand_name(command).unwrap_or("list") {
+            "list" => {
+                let lines = self
+                    .state
+                    .database
+                    .mvp_list_lines(&self.state.config.commands.mob_table_name, query_limit)
+                    .await?;
+                self.respond_lines(context, command, "MVP", lines, false)
+                    .await
+            }
+            "last" => {
+                let lines = self
+                    .state
+                    .database
+                    .recent_log_lines("mvplog", query_limit)
+                    .await?;
+                self.respond_lines(context, command, "Derniers MVP", lines, false)
+                    .await
+            }
+            "top" => {
+                let lines = self
+                    .state
+                    .database
+                    .recent_log_lines("mvplog", query_limit)
+                    .await?;
+                self.respond_lines(context, command, "Top MVP", lines, false)
+                    .await
+            }
+            _ => {
+                self.respond_error(context, command, "Sous-commande /mvp inconnue.")
+                    .await
+            }
+        }
+    }
+
+    async fn handle_rank(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
+        let Some(name) = string_option(command, "name") else {
+            return self
+                .respond_error(context, command, "Option obligatoire manquante : name.")
+                .await;
+        };
+        let lines = self
+            .state
+            .database
+            .rank_summary_lines(
+                name,
+                self.state.config.display.public_character_group_threshold(),
+            )
+            .await?;
+
+        match lines {
+            Some(lines) => {
+                self.respond_lines(context, command, "Rang personnage", lines, false)
+                    .await
+            }
+            None => {
+                self.respond_error(context, command, "Aucun personnage n’a été trouvé.")
+                    .await
+            }
+        }
+    }
+
+    async fn handle_market_pack(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        let Some(item_query) = string_option(command, "item") else {
+            return self
+                .respond_error(context, command, "Option obligatoire manquante : item.")
+                .await;
+        };
+        let Some(item_id) = self.resolve_item_id(item_query).await? else {
+            return self
+                .respond_error(context, command, "Aucun item n’a été trouvé.")
+                .await;
+        };
+
+        match subcommand_name(command).unwrap_or("info") {
+            "info" => {
+                if !self
+                    .ensure_database_tables(context, command, MARKET_TABLES)
+                    .await?
+                {
+                    return Ok(());
+                }
+                let overview = self
+                    .cached_market_overview(
+                        item_id,
+                        self.state.config.display.public_character_group_threshold(),
+                    )
+                    .await?;
+                self.respond_embed(context, command, embeds::market_embed(&overview), false)
+                    .await
+            }
+            "sell" => {
+                if !self
+                    .ensure_database_tables(context, command, SELL_TABLES)
+                    .await?
+                {
+                    return Ok(());
+                }
+                let (display_limit, query_limit) = self.list_limits(command);
+                let sellers = self
+                    .cached_who_sell(
+                        item_id,
+                        self.state.config.display.public_character_group_threshold(),
+                        query_limit,
+                    )
+                    .await?;
+                self.respond_embed(
+                    context,
+                    command,
+                    embeds::who_sell_embed(item_id, &sellers, display_limit),
+                    false,
+                )
+                .await
+            }
+            "buy" => {
+                if !self
+                    .ensure_database_tables(context, command, BUYING_STORE_TABLES)
+                    .await?
+                {
+                    return Ok(());
+                }
+                let (display_limit, query_limit) = self.list_limits(command);
+                let buyers = self
+                    .cached_who_buy(
+                        item_id,
+                        self.state.config.display.public_character_group_threshold(),
+                        query_limit,
+                    )
+                    .await?;
+                self.respond_embed(
+                    context,
+                    command,
+                    embeds::who_buy_embed(item_id, &buyers, display_limit),
+                    false,
+                )
+                .await
+            }
+            _ => {
+                self.respond_error(context, command, "Sous-commande /market inconnue.")
+                    .await
+            }
+        }
+    }
+
+    async fn handle_staff_pack(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        let subcommand = subcommand_name(command).unwrap_or("player");
+        let required_role = match subcommand {
+            "player" | "account" | "chars" => StaffRole::Helper,
+            "loginlog" | "ip-accounts" | "multiaccount" | "banned" => StaffRole::Admin,
+            _ => StaffRole::Gm,
+        };
+        if !self.has_staff_role(command, required_role) {
+            return self
+                .respond_embed(context, command, embeds::staff_only_embed(), true)
+                .await;
+        }
+
+        match subcommand {
+            "player" => self.handle_staff_player(context, command).await,
+            "account" => self.handle_staff_account(context, command).await,
+            "chars" => self.handle_staff_chars(context, command).await,
+            "inventory" => self.handle_charinventory(context, command).await,
+            "equipment" => self.handle_charequipment(context, command).await,
+            "cart" => self.handle_staff_cart(context, command).await,
+            "storage" => self.handle_staff_storage(context, command).await,
+            "guildstorage" => self.handle_staff_guildstorage(context, command).await,
+            "whohas" | "item-search" => self.handle_staff_whohas(context, command).await,
+            "zeny" => self.handle_staff_zeny(context, command).await,
+            "zenylog" => {
+                self.handle_character_log_command(context, command, "zenylog")
+                    .await
+            }
+            "picklog" => {
+                self.handle_character_log_command(context, command, "picklog")
+                    .await
+            }
+            "trade-log" => {
+                self.handle_character_log_command(context, command, "picklog")
+                    .await
+            }
+            "mvp-log" => {
+                self.handle_character_log_command(context, command, "mvplog")
+                    .await
+            }
+            "loginlog" => {
+                self.handle_character_log_command(context, command, "loginlog")
+                    .await
+            }
+            "ip-accounts" | "multiaccount" => {
+                self.handle_character_log_command(context, command, "loginlog")
+                    .await
+            }
+            "banned" => self.handle_banlist(context, command).await,
+            _ => {
+                self.respond_error(context, command, "Sous-commande /staff inconnue.")
+                    .await
+            }
+        }
+    }
+
+    async fn handle_mod_pack(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
+        if !self.has_staff_role(command, StaffRole::Moderator) {
+            return self
+                .respond_embed(context, command, embeds::staff_only_embed(), true)
+                .await;
+        }
+
+        match subcommand_name(command).unwrap_or("chatlog") {
+            "chatlog" => {
+                self.handle_character_log_command(context, command, "chatlog")
+                    .await
+            }
+            "chat-search" => self.handle_chat_search(context, command).await,
+            "report-context" => self.handle_report_context(context, command).await,
+            "branchlog" => {
+                self.handle_character_log_command(context, command, "branchlog")
+                    .await
+            }
+            _ => {
+                self.respond_error(context, command, "Sous-commande /mod inconnue.")
+                    .await
+            }
+        }
+    }
+
+    async fn handle_debug_pack(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        if !self.has_staff_role(command, self.state.config.commands.debug_min_role) {
+            return self
+                .respond_embed(context, command, embeds::staff_only_embed(), true)
+                .await;
+        }
+
+        match subcommand_name(command).unwrap_or("quest") {
+            "quest" => self.handle_charquests(context, command).await,
+            "char-vars" => {
+                self.handle_variable_command(context, command, "char_reg_num")
+                    .await
+            }
+            "acc-vars" => {
+                self.handle_variable_command(context, command, "acc_reg_num")
+                    .await
+            }
+            _ => {
+                self.respond_error(context, command, "Sous-commande /debug inconnue.")
+                    .await
+            }
+        }
+    }
+
+    async fn handle_audit_pack(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        if !self.has_staff_role(command, self.state.config.commands.audit_min_role) {
+            return self
+                .respond_embed(context, command, embeds::staff_only_embed(), true)
+                .await;
+        }
+
+        let (_display_limit, query_limit) = self.list_limits(command);
+        match subcommand_name(command).unwrap_or("atcommands") {
+            "atcommands" => {
+                let Some(gm) = string_option(command, "gm") else {
+                    return self
+                        .respond_error(context, command, "Option obligatoire manquante : gm.")
+                        .await;
+                };
+                let lines = self
+                    .state
+                    .database
+                    .named_log_lines("atcommandlog", gm, query_limit)
+                    .await?;
+                self.respond_lines(context, command, "Audit atcommands", lines, true)
+                    .await
+            }
+            "item-created" => {
+                let lines = self
+                    .state
+                    .database
+                    .recent_log_lines("picklog", query_limit)
+                    .await?;
+                self.respond_lines(context, command, "Audit des items créés", lines, true)
+                    .await
+            }
+            "zeny-created" => {
+                let lines = self
+                    .state
+                    .database
+                    .recent_log_lines("zenylog", query_limit)
+                    .await?;
+                self.respond_lines(context, command, "Audit zeny", lines, true)
+                    .await
+            }
+            "gm-activity" => {
+                let Some(gm) = string_option(command, "gm") else {
+                    return self
+                        .respond_error(context, command, "Option obligatoire manquante : gm.")
+                        .await;
+                };
+                let lines = self
+                    .state
+                    .database
+                    .named_log_lines("atcommandlog", gm, query_limit)
+                    .await?;
+                self.respond_lines(context, command, "Activite GM", lines, true)
+                    .await
+            }
+            _ => {
+                self.respond_error(context, command, "Sous-commande /audit inconnue.")
+                    .await
+            }
+        }
+    }
+
+    async fn handle_db_pack(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
+        if !self.has_staff_role(command, StaffRole::Owner) {
+            return self
+                .respond_embed(context, command, embeds::staff_only_embed(), true)
+                .await;
+        }
+
+        match subcommand_name(command).unwrap_or("health") {
+            "health" => {
+                let lines = self.state.database.release_health_lines().await?;
+                self.respond_lines(context, command, "DB health", lines, true)
+                    .await
+            }
+            "tables" => {
+                let (_display_limit, query_limit) = self.list_limits(command);
+                let lines = self
+                    .state
+                    .database
+                    .detected_rathena_tables(query_limit)
+                    .await?;
+                self.respond_lines_or_empty(
+                    context,
+                    command,
+                    "Tables rAthena détectées",
+                    lines,
+                    "Aucune table n’a été détectée.",
+                    true,
+                )
+                .await
+            }
+            "count" => {
+                let lines = self.state.database.useful_table_counts().await?;
+                self.respond_lines_or_empty(
+                    context,
+                    command,
+                    "Compteurs de tables",
+                    lines,
+                    "Aucune table utile n’a été détectée.",
+                    true,
+                )
+                .await
+            }
+            "logs-size" => {
+                let lines = self.state.database.log_table_sizes().await?;
+                self.respond_lines(context, command, "Volume des logs", lines, true)
+                    .await
+            }
+            "last-update" => {
+                let (_display_limit, query_limit) = self.list_limits(command);
+                let lines = self.state.database.sql_updates_lines(query_limit).await?;
+                self.respond_lines(context, command, "sql_updates", lines, true)
+                    .await
+            }
+            _ => {
+                self.respond_error(context, command, "Sous-commande /db inconnue.")
+                    .await
+            }
+        }
+    }
+
+    async fn handle_gmmsg_pack(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        if !self.has_staff_role(command, self.state.config.commands.gmmsg_min_role) {
+            return self
+                .respond_embed(context, command, embeds::staff_only_embed(), true)
+                .await;
+        }
+
+        let subcommand = subcommand_name(command).unwrap_or("server");
+        let Some(message) = string_option(command, "message") else {
+            return self
+                .respond_error(context, command, "Option obligatoire manquante : message.")
+                .await;
+        };
+        let message =
+            match sanitize_gm_message(message, self.state.config.game_bridge.max_message_length) {
+                Ok(message) => message,
+                Err(message) => return self.respond_error(context, command, &message).await,
+            };
+
+        let result = match subcommand {
+            "server" => {
+                self.state
+                    .game_bridge
+                    .send_global_message(BroadcastMode::Broadcast, &message)
+                    .await
+            }
+            "blue" => {
+                self.state
+                    .game_bridge
+                    .send_global_message(BroadcastMode::KamiBlue, &message)
+                    .await
+            }
+            "color" => {
+                let Some(hex) = string_option(command, "hex") else {
+                    return self
+                        .respond_error(context, command, "Option obligatoire manquante : hex.")
+                        .await;
+                };
+                let hex = match validate_hex_color(hex) {
+                    Ok(hex) => hex,
+                    Err(message) => return self.respond_error(context, command, message).await,
+                };
+                self.state
+                    .game_bridge
+                    .send_global_message(BroadcastMode::KamiColor(hex), &message)
+                    .await
+            }
+            "map" => {
+                let Some(map) = string_option(command, "map") else {
+                    return self
+                        .respond_error(context, command, "Option obligatoire manquante : map.")
+                        .await;
+                };
+                self.state.game_bridge.send_map_message(map, &message).await
+            }
+            "test" => Ok(format!("mode test : {message}")),
+            _ => Err(anyhow::anyhow!("Sous-commande /gmmsg inconnue.")),
+        };
+
+        let result_text = match result {
+            Ok(details) => format!("Résultat : `{details}`"),
+            Err(error) => format!("Résultat : `{}`", error),
+        };
+        self.log_staff_action(context, command, subcommand, &message, &result_text)
+            .await;
+
+        if self.state.config.game_bridge.mode == GameBridgeMode::Disabled && subcommand != "test" {
+            return self
+                .respond_error(
+                    context,
+                    command,
+                    "Le bridge en jeu n’est pas configuré. Le message n’a pas été envoyé.",
+                )
+                .await;
+        }
+
+        self.respond_embed(
+            context,
+            command,
+            embeds::success_message_embed(
+                "Message GM",
+                format!("Commande `{subcommand}` traitée.\n{result_text}"),
+            ),
+            true,
+        )
+        .await
+    }
+
+    async fn handle_staff_player(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        let Some(character) = string_option(command, "character") else {
+            return self
+                .respond_error(
+                    context,
+                    command,
+                    "Option obligatoire manquante : character.",
+                )
+                .await;
+        };
+        let profile = self.state.database.find_player(i32::MAX, character).await?;
+        let embed = match profile {
+            Some(profile) => embeds::player_embed(&profile),
+            None => embeds::player_not_found_embed(character),
+        };
+        self.respond_embed(context, command, embed, true).await
+    }
+
+    async fn handle_staff_account(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        let Some(character) = string_option(command, "character") else {
+            return self
+                .respond_error(
+                    context,
+                    command,
+                    "Option obligatoire manquante : character.",
+                )
+                .await;
+        };
+        let account = self
+            .state
+            .database
+            .account_status_by_character(character)
+            .await?;
+        let embed = match account {
+            Some(account) => embeds::account_status_embed(&account),
+            None => embeds::error_embed("Aucun compte n’est lié à ce personnage."),
+        };
+        self.respond_embed(context, command, embed, true).await
+    }
+
+    async fn handle_staff_chars(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        let Some(lookup) = string_option(command, "lookup") else {
+            return self
+                .respond_error(context, command, "Option obligatoire manquante : lookup.")
+                .await;
+        };
+        let account_id = match lookup.trim().parse::<i64>() {
+            Ok(value) if value > 0 => Some(value),
+            _ => self.state.database.account_id_for_character(lookup).await?,
+        };
+        let Some(account_id) = account_id else {
+            return self
+                .respond_error(context, command, "Aucun compte n’a été trouvé.")
+                .await;
+        };
+        let (display_limit, query_limit) = self.list_limits(command);
+        let characters = self
+            .state
+            .database
+            .account_characters(account_id, query_limit)
+            .await?;
+        self.respond_embed(
+            context,
+            command,
+            embeds::account_characters_embed(account_id, &characters, display_limit),
+            true,
+        )
+        .await
+    }
+
+    async fn handle_staff_cart(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        let Some(character) = string_option(command, "character") else {
+            return self
+                .respond_error(
+                    context,
+                    command,
+                    "Option obligatoire manquante : character.",
+                )
+                .await;
+        };
+        let (_display_limit, query_limit) = self.list_limits(command);
+        let lines = self
+            .state
+            .database
+            .character_cart_lines(character, query_limit)
+            .await?;
+        self.respond_lines(context, command, "Cart personnage", lines, true)
+            .await
+    }
+
+    async fn handle_staff_storage(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        let Some(character) = string_option(command, "character") else {
+            return self
+                .respond_error(
+                    context,
+                    command,
+                    "Option obligatoire manquante : character.",
+                )
+                .await;
+        };
+        let (_display_limit, query_limit) = self.list_limits(command);
+        let lines = self
+            .state
+            .database
+            .character_storage_lines(character, query_limit)
+            .await?;
+        self.respond_lines(context, command, "Storage compte", lines, true)
+            .await
+    }
+
+    async fn handle_staff_guildstorage(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        let Some(guild) = string_option(command, "guild") else {
+            return self
+                .respond_error(context, command, "Option obligatoire manquante : guild.")
+                .await;
+        };
+        let (_display_limit, query_limit) = self.list_limits(command);
+        let lines = self
+            .state
+            .database
+            .guild_storage_lines(guild, query_limit)
+            .await?;
+        self.respond_lines(context, command, "Storage guilde", lines, true)
+            .await
+    }
+
+    async fn handle_staff_whohas(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        let Some(item_query) = string_option(command, "item") else {
+            return self
+                .respond_error(context, command, "Option obligatoire manquante : item.")
+                .await;
+        };
+        let Some(item_id) = self.resolve_item_id(item_query).await? else {
+            return self
+                .respond_error(context, command, "Aucun item n’a été trouvé.")
+                .await;
+        };
+        if !self
+            .ensure_database_tables(context, command, ITEM_STORAGE_TABLES)
+            .await?
+        {
+            return Ok(());
+        }
+        let (display_limit, query_limit) = self.list_limits(command);
+        let owners = self
+            .state
+            .database
+            .item_owners(item_id, query_limit)
+            .await?;
+        self.respond_embed(
+            context,
+            command,
+            embeds::item_owners_embed(item_id, &owners, display_limit),
+            true,
+        )
+        .await
+    }
+
+    async fn handle_staff_zeny(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        let Some(character) = string_option(command, "character") else {
+            return self
+                .respond_error(
+                    context,
+                    command,
+                    "Option obligatoire manquante : character.",
+                )
+                .await;
+        };
+        let profile = self.state.database.find_player(i32::MAX, character).await?;
+        match profile {
+            Some(profile) => {
+                self.respond_embed(
+                    context,
+                    command,
+                    embeds::text_embed(
+                        "Zeny personnage",
+                        format!("`{}` possède `{}` zeny.", profile.name, profile.zeny),
+                    ),
+                    true,
+                )
+                .await
+            }
+            None => {
+                self.respond_error(context, command, "Aucun personnage n’a été trouvé.")
+                    .await
+            }
+        }
+    }
+
+    async fn handle_character_log_command(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+        table_name: &str,
+    ) -> Result<()> {
+        let Some(character) = string_option(command, "character") else {
+            return self
+                .respond_error(
+                    context,
+                    command,
+                    "Option obligatoire manquante : character.",
+                )
+                .await;
+        };
+        let (_display_limit, query_limit) = self.list_limits(command);
+        let lines = self
+            .state
+            .database
+            .character_log_lines(table_name, character, query_limit)
+            .await?;
+        self.respond_lines(context, command, table_name, lines, true)
+            .await
+    }
+
+    async fn handle_variable_command(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+        table_name: &str,
+    ) -> Result<()> {
+        let Some(character) = string_option(command, "character") else {
+            return self
+                .respond_error(
+                    context,
+                    command,
+                    "Option obligatoire manquante : character.",
+                )
+                .await;
+        };
+        let (_display_limit, query_limit) = self.list_limits(command);
+        let lines = self
+            .state
+            .database
+            .variable_lines(table_name, character, query_limit)
+            .await?;
+        self.respond_lines(context, command, table_name, lines, true)
+            .await
+    }
+
+    async fn handle_chat_search(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        let Some(text) = string_option(command, "text") else {
+            return self
+                .respond_error(context, command, "Option obligatoire manquante : text.")
+                .await;
+        };
+        let (_display_limit, query_limit) = self.list_limits(command);
+        let lines = self
+            .state
+            .database
+            .named_log_lines("chatlog", text, query_limit)
+            .await?;
+        self.respond_lines(context, command, "Recherche chatlog", lines, true)
+            .await
+    }
+
+    async fn handle_report_context(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+    ) -> Result<()> {
+        let Some(character) = string_option(command, "character") else {
+            return self
+                .respond_error(
+                    context,
+                    command,
+                    "Option obligatoire manquante : character.",
+                )
+                .await;
+        };
+        let (_display_limit, query_limit) = self.list_limits(command);
+        let mut lines = Vec::new();
+        if let Some(profile) = self.state.database.find_player(i32::MAX, character).await? {
+            lines.push(format!(
+                "Position: `{}` - online `{}`",
+                profile.map, profile.online
+            ));
+        }
+        lines.extend(
+            self.state
+                .database
+                .character_log_lines("chatlog", character, query_limit)
+                .await?,
+        );
+        self.respond_lines(context, command, "Contexte signalement", lines, true)
+            .await
     }
 
     async fn handle_status(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
@@ -1373,109 +2507,6 @@ impl Handler {
         self.respond_embed(context, command, embed, true).await
     }
 
-    async fn handle_accountmanage(
-        &self,
-        context: &Context,
-        command: &CommandInteraction,
-    ) -> Result<()> {
-        if !self.has_staff_access(command) {
-            return self
-                .respond_embed(context, command, embeds::staff_only_embed(), true)
-                .await;
-        }
-
-        let Some(account_id) = positive_integer_option(command, "account_id") else {
-            return self
-                .respond_error(
-                    context,
-                    command,
-                    "Option obligatoire manquante : account_id.",
-                )
-                .await;
-        };
-        let Some(action) = string_option(command, "action") else {
-            return self
-                .respond_error(context, command, "Option obligatoire manquante : action.")
-                .await;
-        };
-        if action.eq_ignore_ascii_case("edit") {
-            let update = match account_update_request(command) {
-                Ok(update) => update,
-                Err(message) => return self.respond_error(context, command, &message).await,
-            };
-
-            if update.is_empty() {
-                return self
-                    .respond_error(
-                        context,
-                        command,
-                        "Aucun champ à modifier. Renseigne au moins une option d’édition.",
-                    )
-                    .await;
-            }
-
-            let result = self
-                .state
-                .database
-                .update_account(
-                    account_id,
-                    update,
-                    self.state.config.account_commands.password_mode,
-                )
-                .await?;
-
-            return self
-                .respond_embed(
-                    context,
-                    command,
-                    embeds::account_update_result_embed(&result),
-                    true,
-                )
-                .await;
-        }
-
-        if !action.eq_ignore_ascii_case("delete") {
-            return self
-                .respond_error(context, command, "Actions supportées : edit, delete.")
-                .await;
-        }
-
-        let Some(confirm) = string_option(command, "confirm") else {
-            return self
-                .respond_error(
-                    context,
-                    command,
-                    "Option obligatoire pour delete : confirm.",
-                )
-                .await;
-        };
-
-        let expected_confirmation = format!("DELETE-ALL-{account_id}");
-        if confirm != expected_confirmation {
-            return self
-                .respond_error(
-                    context,
-                    command,
-                    &format!("Confirmation attendue : `{expected_confirmation}`."),
-                )
-                .await;
-        }
-
-        let result = self
-            .state
-            .database
-            .delete_account_completely(account_id)
-            .await?;
-
-        self.respond_embed(
-            context,
-            command,
-            embeds::account_delete_result_embed(&result),
-            true,
-        )
-        .await
-    }
-
     async fn handle_banlist(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
         if !self.has_staff_access(command) {
             return self
@@ -1563,6 +2594,10 @@ impl Handler {
     }
 
     fn has_staff_access(&self, command: &CommandInteraction) -> bool {
+        self.has_staff_role(command, StaffRole::Helper)
+    }
+
+    fn has_staff_role(&self, command: &CommandInteraction, minimum_role: StaffRole) -> bool {
         let config = &self.state.config.discord;
         let Some(member) = command.member.as_ref() else {
             return false;
@@ -1573,8 +2608,12 @@ impl Handler {
             .map(|role| role.get())
             .collect::<Vec<_>>();
 
-        has_configured_staff_role(
+        has_configured_role(
             &member_role_ids,
+            minimum_role,
+            &config.helper_role_ids,
+            &config.moderator_role_ids,
+            &config.gm_role_ids,
             &config.staff_role_ids,
             &config.admin_role_ids,
             &config.owner_role_ids,
@@ -1631,6 +2670,92 @@ impl Handler {
     ) -> Result<()> {
         self.respond_embed(context, command, embeds::error_embed(message), true)
             .await
+    }
+
+    async fn respond_lines(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+        title: &str,
+        lines: Vec<String>,
+        ephemeral: bool,
+    ) -> Result<()> {
+        self.respond_lines_or_empty(context, command, title, lines, "Aucun resultat.", ephemeral)
+            .await
+    }
+
+    async fn respond_lines_or_empty(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+        title: &str,
+        lines: Vec<String>,
+        empty_message: &str,
+        ephemeral: bool,
+    ) -> Result<()> {
+        let body = if lines.is_empty() {
+            empty_message.to_string()
+        } else {
+            lines
+                .into_iter()
+                .filter(|line| !line.trim().is_empty())
+                .take(self.state.config.display.max_limit as usize)
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+
+        self.respond_embed(
+            context,
+            command,
+            embeds::text_embed(title, trim_discord_message(&body)),
+            ephemeral,
+        )
+        .await
+    }
+
+    async fn resolve_item_id(&self, item_query: &str) -> Result<Option<i64>> {
+        Ok(self
+            .state
+            .database
+            .search_items(item_query, 1)
+            .await?
+            .into_iter()
+            .next()
+            .map(|item| item.item_id))
+    }
+
+    async fn log_staff_action(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+        action: &str,
+        message: &str,
+        result: &str,
+    ) {
+        let Some(channel_id) = self.state.config.discord.staff_log_channel_id else {
+            info!(
+                user_id = command.user.id.get(),
+                action = action,
+                message = message,
+                result = result,
+                "Action staff exécutée."
+            );
+            return;
+        };
+
+        let content = format!(
+            "gmmsg utilisateur={} action={} message=`{}` résultat={}",
+            command.user.id.get(),
+            action,
+            message.replace('@', "@\u{200B}"),
+            result.replace('@', "@\u{200B}")
+        );
+        if let Err(error) = ChannelId::new(channel_id)
+            .send_message(&context.http, CreateMessage::new().content(content))
+            .await
+        {
+            error!(error = %error, "Impossible d’envoyer le log staff Discord.");
+        }
     }
 
     async fn ensure_database_tables(
@@ -1846,55 +2971,86 @@ impl SearchCategory {
     }
 }
 
-fn account_update_request(
-    command: &CommandInteraction,
-) -> std::result::Result<AccountUpdateRequest, String> {
-    Ok(AccountUpdateRequest {
-        userid: string_option(command, "username")
-            .map(validate_account_username)
-            .transpose()?,
-        password: string_option(command, "password")
-            .map(validate_account_password)
-            .transpose()?,
-        sex: string_option(command, "sex")
-            .map(validate_account_sex)
-            .transpose()?,
-        birthdate: string_option(command, "birthdate")
-            .map(validate_account_birthdate)
-            .transpose()?,
-        email: string_option(command, "email")
-            .map(|value| validate_account_email(Some(value)))
-            .transpose()?,
-        group_id: optional_non_negative_i32_option(command, "group_id")?,
-        state: optional_non_negative_i64_option(command, "state")?,
-        unban_time: optional_non_negative_i64_option(command, "unban_time")?,
-        expiration_time: optional_non_negative_i64_option(command, "expiration_time")?,
-        character_slots: optional_non_negative_i32_option(command, "character_slots")?,
-    })
+fn command_path(command: &CommandInteraction) -> String {
+    match subcommand_name(command) {
+        Some(subcommand) => format!("{} {}", command.data.name, subcommand),
+        None => command.data.name.clone(),
+    }
+}
+
+fn is_public_pack_root(command_name: &str) -> bool {
+    matches!(
+        command_name,
+        "server"
+            | "online"
+            | "player"
+            | "guild"
+            | "castle"
+            | "item"
+            | "who-drops"
+            | "mob"
+            | "mvp"
+            | "top"
+            | "rank"
+            | "market"
+    )
+}
+
+fn is_staff_pack_root(command_name: &str) -> bool {
+    matches!(
+        command_name,
+        "staff" | "mod" | "debug" | "audit" | "db" | "gmmsg"
+    )
+}
+
+fn subcommand_name(command: &CommandInteraction) -> Option<&str> {
+    command
+        .data
+        .options
+        .iter()
+        .find_map(|option| match &option.value {
+            CommandDataOptionValue::SubCommand(_) | CommandDataOptionValue::SubCommandGroup(_) => {
+                Some(option.name.as_str())
+            }
+            _ => None,
+        })
+}
+
+fn option_value<'a>(
+    options: &'a [CommandDataOption],
+    name: &str,
+) -> Option<&'a CommandDataOptionValue> {
+    for option in options {
+        if option.name == name {
+            return Some(&option.value);
+        }
+
+        match &option.value {
+            CommandDataOptionValue::SubCommand(options)
+            | CommandDataOptionValue::SubCommandGroup(options) => {
+                if let Some(value) = option_value(options, name) {
+                    return Some(value);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    None
 }
 
 fn string_option<'a>(command: &'a CommandInteraction, name: &str) -> Option<&'a str> {
-    command
-        .data
-        .options
-        .iter()
-        .find(|option| option.name == name)
-        .and_then(|option| match &option.value {
-            CommandDataOptionValue::String(value) => Some(value.as_str()),
-            _ => None,
-        })
+    option_value(&command.data.options, name).and_then(|value| match value {
+        CommandDataOptionValue::String(value) => Some(value.as_str()),
+        _ => None,
+    })
 }
 
 fn bool_option(command: &CommandInteraction, name: &str) -> Option<bool> {
-    command
-        .data
-        .options
-        .iter()
-        .find(|option| option.name == name)
-        .and_then(|option| match &option.value {
-            CommandDataOptionValue::Boolean(value) => Some(*value),
-            _ => None,
-        })
+    option_value(&command.data.options, name).and_then(|value| match value {
+        CommandDataOptionValue::Boolean(value) => Some(*value),
+        _ => None,
+    })
 }
 
 fn positive_integer_option(command: &CommandInteraction, name: &str) -> Option<i64> {
@@ -1906,15 +3062,10 @@ fn non_negative_integer_option(command: &CommandInteraction, name: &str) -> Opti
 }
 
 fn integer_option(command: &CommandInteraction, name: &str) -> Option<i64> {
-    command
-        .data
-        .options
-        .iter()
-        .find(|option| option.name == name)
-        .and_then(|option| match &option.value {
-            CommandDataOptionValue::Integer(value) => Some(*value),
-            _ => None,
-        })
+    option_value(&command.data.options, name).and_then(|value| match value {
+        CommandDataOptionValue::Integer(value) => Some(*value),
+        _ => None,
+    })
 }
 
 fn optional_non_negative_i32_option(
@@ -1957,17 +3108,95 @@ fn has_configured_staff_role(
     admin_role_ids: &[u64],
     owner_role_ids: &[u64],
 ) -> bool {
-    let allowed_role_ids = staff_role_ids
-        .iter()
-        .chain(admin_role_ids.iter())
-        .chain(owner_role_ids.iter())
-        .copied()
-        .collect::<Vec<_>>();
+    has_configured_role(
+        member_role_ids,
+        StaffRole::Helper,
+        staff_role_ids,
+        &[],
+        &[],
+        staff_role_ids,
+        admin_role_ids,
+        owner_role_ids,
+    )
+}
+
+fn has_configured_role(
+    member_role_ids: &[u64],
+    minimum_role: StaffRole,
+    helper_role_ids: &[u64],
+    moderator_role_ids: &[u64],
+    gm_role_ids: &[u64],
+    legacy_staff_role_ids: &[u64],
+    admin_role_ids: &[u64],
+    owner_role_ids: &[u64],
+) -> bool {
+    let mut allowed_role_ids = Vec::new();
+
+    if minimum_role <= StaffRole::Helper {
+        allowed_role_ids.extend(helper_role_ids.iter().copied());
+        allowed_role_ids.extend(legacy_staff_role_ids.iter().copied());
+    }
+    if minimum_role <= StaffRole::Moderator {
+        allowed_role_ids.extend(moderator_role_ids.iter().copied());
+    }
+    if minimum_role <= StaffRole::Gm {
+        allowed_role_ids.extend(gm_role_ids.iter().copied());
+    }
+    if minimum_role <= StaffRole::Admin {
+        allowed_role_ids.extend(admin_role_ids.iter().copied());
+    }
+    allowed_role_ids.extend(owner_role_ids.iter().copied());
 
     !allowed_role_ids.is_empty()
         && member_role_ids
             .iter()
             .any(|role_id| allowed_role_ids.contains(role_id))
+}
+
+fn sanitize_gm_message(value: &str, max_length: usize) -> std::result::Result<String, String> {
+    let sanitized = value
+        .chars()
+        .filter(|character| !character.is_control())
+        .collect::<String>()
+        .replace("@everyone", "@\u{200B}everyone")
+        .replace("@here", "@\u{200B}here")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    if sanitized.trim().is_empty() {
+        return Err("Le message ne peut pas être vide.".to_string());
+    }
+
+    if sanitized.chars().count() > max_length {
+        return Err(format!(
+            "Le message dépasse la limite configurée de {max_length} caractères."
+        ));
+    }
+
+    Ok(sanitized)
+}
+
+fn validate_hex_color(value: &str) -> std::result::Result<String, &'static str> {
+    let value = value.trim().trim_start_matches('#');
+    if value.len() == 6 && value.chars().all(|character| character.is_ascii_hexdigit()) {
+        Ok(value.to_ascii_uppercase())
+    } else {
+        Err("La couleur doit être au format RRGGBB.")
+    }
+}
+
+fn trim_discord_message(value: &str) -> String {
+    const MAX_EMBED_DESCRIPTION: usize = 3900;
+    if value.chars().count() <= MAX_EMBED_DESCRIPTION {
+        return value.to_string();
+    }
+
+    value
+        .chars()
+        .take(MAX_EMBED_DESCRIPTION.saturating_sub(20))
+        .collect::<String>()
+        + "\n... sortie tronquée"
 }
 
 fn validate_account_username(value: &str) -> std::result::Result<String, String> {
@@ -2134,14 +3363,14 @@ async fn warm_search_asset_cache(assets: &AssetConfig, results: &SearchResults) 
             debug!(
                 url = %url,
                 status = response.status().as_u16(),
-                "Prechargement FluxCP monstre termine."
+                "Préchargement FluxCP du monstre terminé."
             );
         }
         Err(error) => {
             debug!(
                 url = %url,
                 error = %error,
-                "Prechargement FluxCP monstre ignore."
+                "Préchargement FluxCP du monstre ignoré."
             );
         }
     }
@@ -2312,7 +3541,6 @@ mod tests {
             "itemcount",
             "itemowners",
             "accountlist",
-            "accountmanage",
             "banlist",
         ];
 

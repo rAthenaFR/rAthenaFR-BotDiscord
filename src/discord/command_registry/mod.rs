@@ -2,7 +2,7 @@ mod options;
 mod public;
 mod staff;
 
-use crate::config::DiscordConfig;
+use crate::config::AppConfig;
 use anyhow::Result;
 use serenity::all::{ApplicationId, CreateCommand, GuildId, Http};
 
@@ -12,12 +12,30 @@ pub fn command_definitions() -> Vec<CreateCommand> {
     commands
 }
 
-pub async fn deploy_commands(config: &DiscordConfig) -> Result<()> {
-    let http = Http::new(&config.token);
-    http.set_application_id(ApplicationId::new(config.application_id));
+pub fn command_definitions_for_config(config: &AppConfig) -> Vec<CreateCommand> {
+    let mut commands = Vec::new();
 
-    let guild_id = GuildId::new(config.guild_id);
-    guild_id.set_commands(&http, command_definitions()).await?;
+    if config.commands.public_pack_enabled {
+        commands.extend(public::command_definitions());
+    } else {
+        commands.push(public::createaccount_definition());
+    }
+
+    if config.commands.staff_pack_enabled {
+        commands.extend(staff::command_definitions());
+    }
+
+    commands
+}
+
+pub async fn deploy_commands(config: &AppConfig) -> Result<()> {
+    let http = Http::new(&config.discord.token);
+    http.set_application_id(ApplicationId::new(config.discord.application_id));
+
+    let guild_id = GuildId::new(config.discord.guild_id);
+    guild_id
+        .set_commands(&http, command_definitions_for_config(config))
+        .await?;
 
     Ok(())
 }

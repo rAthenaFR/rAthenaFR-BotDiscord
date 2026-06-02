@@ -1,80 +1,50 @@
 # Sécurité
 
-Documentation française de rAthenaFR Discord Bot pour le projet rAthena.
-
-> [!WARNING]
-> Le bot manipule des données de compte rAthena. Les secrets, mots de passe et tokens ne doivent jamais apparaître dans les embeds, les logs ou Git.
-
 ## Principes
 
-- Bot en lecture seule par défaut.
-- Secrets dans `.env`, jamais dans Git.
-- Utilisateur SQL dédié.
-- Droits Discord staff configurés explicitement.
-- Pas d’exposition publique de MariaDB.
-- Conteneur Docker non-root.
-- Écritures SQL désactivées par défaut ; les commandes de compte exigent des droits SQL dédiés.
+- Toutes les commandes SQL de consultation sont en lecture seule.
+- `/createaccount` est la seule commande conservée qui peut écrire en base, uniquement si elle est activée.
+- Les commandes staff utilisent des réponses éphémères pour les données sensibles.
+- Les mots de passe, hashes, e-mails privés et IP complètes ne doivent pas être affichés.
+- `/gmmsg` ne passe pas par SQL et n’exécute jamais de shell.
 
-## Données sensibles interdites dans les embeds
+!!! danger "Données sensibles"
+    Ne publie jamais de mot de passe, hash, e-mail privé, IP complète, token Discord ou contenu réel de `.env` dans Discord, dans les logs publics ou dans Git.
 
-Ne pas afficher :
+## Rôles
 
-- `user_pass`
-- `email`
-- `last_ip`
-- `pincode`
-- `web_auth_token`
-- tokens ou mots de passe
-
-> [!IMPORTANT]
-> Même dans une commande staff éphémère, ces champs restent interdits.
-
-## Rôles staff
+Configure des rôles dédiés :
 
 ```env
-RATHENAFR_STAFF_ROLE_IDS=
+RATHENAFR_HELPER_ROLE_IDS=
+RATHENAFR_MODERATOR_ROLE_IDS=
+RATHENAFR_GM_ROLE_IDS=
 RATHENAFR_ADMIN_ROLE_IDS=
 RATHENAFR_OWNER_ROLE_IDS=
 ```
 
-Laisse vide pour refuser les commandes staff.
+Laisse une variable vide pour refuser ce niveau d’accès.
 
-> [!TIP]
-> Utilise des rôles Discord dédiés au bot plutôt que des rôles trop larges.
+## SQL
 
-## Backups
+Permission normale :
 
-Sauvegarde régulièrement la base rAthena, mais ne stocke pas les backups dans le dépôt du bot.
+```sql
+GRANT SELECT ON `ragnarok`.* TO 'rathenafr_bot'@'%';
+```
 
-> [!CAUTION]
-> Une suppression complète via `/accountmanage` doit toujours être précédée d’une sauvegarde vérifiable.
+Permission optionnelle pour `/createaccount` :
 
-## Mise en ligne
+```sql
+GRANT INSERT ON `ragnarok`.`login` TO 'rathenafr_bot'@'%';
+```
 
-- Active le secret scanning et la push protection sur GitHub.
-- Active le private vulnerability reporting si le dépôt public appartient à une organisation.
-- Garde `.env` uniquement sur le serveur.
-- Protège `.env` avec des permissions restrictives, par exemple `chmod 600 .env`.
-- N’expose pas MariaDB/MySQL publiquement.
-- Fais communiquer le bot avec la base via réseau Docker, réseau privé, VPN ou tunnel privé.
+!!! warning "Droits à ne pas accorder"
+    Ne donne pas `UPDATE`, `DELETE`, `DROP`, `ALTER` ou `CREATE` au bot pour cette version.
 
-## Commandes de compte
+## `/gmmsg`
 
-`/createaccount` est désactivée par défaut avec `RATHENAFR_ACCOUNT_CREATION_ENABLED=false`.
+`/gmmsg` limite la longueur du message, nettoie les caractères de contrôle et neutralise `@everyone`/`@here` dans les logs Discord.
 
-Si tu l’actives :
-
-- le mot de passe transite par Discord ;
-- la réponse du bot est éphémère ;
-- le bot ne réaffiche jamais le mot de passe ;
-- l’utilisateur SQL doit avoir `INSERT` sur `login`.
-- `RATHENAFR_ACCOUNT_PASSWORD_MODE` doit correspondre au serveur login rAthena (`plain` ou `md5`).
-
-`/accountmanage` est réservé aux rôles GM/staff configurés dans `RATHENAFR_STAFF_ROLE_IDS`, `RATHENAFR_ADMIN_ROLE_IDS` ou `RATHENAFR_OWNER_ROLE_IDS`. L’action `edit` modifie les champs de `login`, et l’action `delete` supprime le compte complet et ses données liées dans une transaction, avec confirmation exacte `DELETE-ALL-ID`.
-
-La suppression est refusée si un personnage du compte possède une guilde. Transfère ou dissous la guilde avant de supprimer le compte.
-
-> [!IMPORTANT]
-> L’édition d’un mot de passe via `/accountmanage action:edit` ne réaffiche jamais le mot de passe dans la réponse Discord.
-
-Voir aussi : [Gestion de comptes](ACCOUNT_MANAGEMENT_FR.md).
+!!! tip "Journalisation staff"
+    Configure `RATHENAFR_STAFF_LOG_CHANNEL_ID` si tu veux tracer les utilisations de `/gmmsg` dans un salon staff.
