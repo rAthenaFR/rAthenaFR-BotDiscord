@@ -164,6 +164,12 @@ pub struct AccountStatus {
     pub lastlogin: Option<String>,
 }
 
+pub const ACCOUNT_STATE_ACTIVE: i64 = 0;
+pub const ACCOUNT_STATE_BLOCKED: i64 = 5;
+pub const ACCOUNT_DEFAULT_GROUP_ID: i64 = 0;
+pub const ACCOUNT_NO_UNBAN_TIME: i64 = 0;
+pub const ACCOUNT_NO_EXPIRATION_TIME: i64 = 0;
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum AccountManageField {
     GroupId,

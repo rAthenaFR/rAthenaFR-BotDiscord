@@ -1863,10 +1863,10 @@ impl RAthenaFrDatabase {
         );
         let mut query = sqlx::query(&sql);
         if has_state {
-            query = query.bind(5_i64);
+            query = query.bind(ACCOUNT_STATE_BLOCKED);
         }
         if has_unban_time {
-            query = query.bind(until.unwrap_or(0));
+            query = query.bind(until.unwrap_or(ACCOUNT_NO_UNBAN_TIME));
         }
 
         self.execute_bound_account_update(query.bind(account_id), "bannissement de compte")
@@ -1895,10 +1895,10 @@ impl RAthenaFrDatabase {
         );
         let mut query = sqlx::query(&sql);
         if has_state {
-            query = query.bind(0_i64);
+            query = query.bind(ACCOUNT_STATE_ACTIVE);
         }
         if has_unban_time {
-            query = query.bind(0_i64);
+            query = query.bind(ACCOUNT_NO_UNBAN_TIME);
         }
 
         self.execute_bound_account_update(query.bind(account_id), "déblocage de compte")
@@ -1917,9 +1917,12 @@ impl RAthenaFrDatabase {
         } else {
             "UPDATE `login` SET `state` = ?, `group_id` = ?, `expiration_time` = ? WHERE `account_id` = ?"
         };
-        let mut query = sqlx::query(sql).bind(5_i64).bind(0_i64).bind(0_i64);
+        let mut query = sqlx::query(sql)
+            .bind(ACCOUNT_STATE_BLOCKED)
+            .bind(ACCOUNT_DEFAULT_GROUP_ID)
+            .bind(ACCOUNT_NO_EXPIRATION_TIME);
         if has_unban_time {
-            query = query.bind(0_i64);
+            query = query.bind(ACCOUNT_NO_UNBAN_TIME);
         }
 
         self.execute_bound_account_update(query.bind(account_id), "désactivation forte de compte")

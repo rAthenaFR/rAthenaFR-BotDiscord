@@ -21,6 +21,7 @@ pub enum GmmsgLogStatus {
 pub enum AccountManageLogStatus {
     Success,
     Refused,
+    Failed,
 }
 
 struct LimitedList {
@@ -928,7 +929,7 @@ pub fn account_manage_staff_log_embed(
 ) -> CreateEmbed {
     let (title, color, result_field) = match status {
         AccountManageLogStatus::Success => ("Compte modifié", COLOR_SUCCESS, "Résultat"),
-        AccountManageLogStatus::Refused => {
+        AccountManageLogStatus::Refused | AccountManageLogStatus::Failed => {
             ("Modification du compte refusée", COLOR_ERROR, "Erreur")
         }
     };

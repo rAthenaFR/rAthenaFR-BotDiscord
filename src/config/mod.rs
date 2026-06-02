@@ -411,8 +411,23 @@ impl CommandConfig {
         !self
             .disabled_commands
             .iter()
-            .any(|disabled| disabled.eq_ignore_ascii_case(command_path))
+            .any(|disabled| command_path_matches_disabled(command_path, disabled))
     }
+}
+
+fn command_path_matches_disabled(command_path: &str, disabled_path: &str) -> bool {
+    if disabled_path.eq_ignore_ascii_case(command_path) {
+        return true;
+    }
+
+    let disabled_path = disabled_path.trim();
+    let disabled_parts = disabled_path.split_whitespace().count();
+    disabled_parts >= 2
+        && command_path.len() > disabled_path.len()
+        && command_path
+            .get(..disabled_path.len())
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case(disabled_path))
+        && command_path[disabled_path.len()..].starts_with(' ')
 }
 
 impl GameBridgeConfig {
@@ -842,6 +857,34 @@ mod tests {
         assert!(!config.command_enabled("STAFF INVENTORY"));
         assert!(!config.command_enabled("top zeny"));
         assert!(config.command_enabled("staff player"));
+    }
+
+    #[test]
+    fn disabled_commands_can_target_nested_subcommands() {
+        let config = CommandConfig::from_lookup(&lookup(&[(
+            "RATHENAFR_DISABLED_COMMANDS",
+            "staff account-manage delete,gmmsg server",
+        )]))
+        .expect("command config");
+
+        assert!(!config.command_enabled("staff account-manage delete"));
+        assert!(config.command_enabled("staff account-manage ban"));
+        assert!(!config.command_enabled("gmmsg server"));
+        assert!(config.command_enabled("gmmsg map"));
+    }
+
+    #[test]
+    fn disabled_commands_can_disable_nested_groups() {
+        let config = CommandConfig::from_lookup(&lookup(&[(
+            "RATHENAFR_DISABLED_COMMANDS",
+            "staff account-manage",
+        )]))
+        .expect("command config");
+
+        assert!(!config.command_enabled("staff account-manage delete"));
+        assert!(!config.command_enabled("staff account-manage edit"));
+        assert!(config.command_enabled("staff inventory"));
+        assert!(config.command_enabled("staff"));
     }
 
     #[test]
