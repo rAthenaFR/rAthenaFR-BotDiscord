@@ -177,6 +177,54 @@ const RELEASE_LOG_TABLES: &[DatabaseTable] = &[
     DatabaseTable::BranchLog,
     DatabaseTable::CharLog,
 ];
+const TOP_GUILDS_SQL: &str = r#"
+            SELECT
+                g.name AS guild_name,
+                g.master AS guild_master,
+                CAST(g.guild_lv AS SIGNED) AS guild_level,
+                CAST(g.max_member AS SIGNED) AS max_members,
+                CAST(COUNT(CASE WHEN l.account_id IS NOT NULL THEN gm.char_id END) AS SIGNED) AS members,
+                CAST(COALESCE(SUM(CASE WHEN l.account_id IS NOT NULL AND `char`.`online` > 0 THEN 1 ELSE 0 END), 0) AS SIGNED) AS online_members
+            FROM `guild` g
+            LEFT JOIN `guild_member` gm ON gm.guild_id = g.guild_id
+            LEFT JOIN `char` ON `char`.`char_id` = gm.char_id
+            LEFT JOIN `login` l ON l.account_id = `char`.`account_id` AND l.group_id < ?
+            GROUP BY
+                g.guild_id,
+                g.name,
+                g.master,
+                g.guild_lv,
+                g.max_member
+            ORDER BY g.guild_lv DESC, members DESC, g.name ASC
+            LIMIT ?
+            "#;
+const FIND_GUILD_SQL: &str = r#"
+            SELECT
+                g.name AS guild_name,
+                g.master AS guild_master,
+                CAST(g.guild_lv AS SIGNED) AS guild_level,
+                CAST(g.max_member AS SIGNED) AS max_members,
+                CAST(g.average_lv AS SIGNED) AS average_level,
+                CAST(g.exp AS SIGNED) AS guild_exp,
+                CAST(g.next_exp AS SIGNED) AS next_exp,
+                CAST(COUNT(CASE WHEN l.account_id IS NOT NULL THEN gm.char_id END) AS SIGNED) AS members,
+                CAST(COALESCE(SUM(CASE WHEN l.account_id IS NOT NULL AND `char`.`online` > 0 THEN 1 ELSE 0 END), 0) AS SIGNED) AS online_members
+            FROM `guild` g
+            LEFT JOIN `guild_member` gm ON gm.guild_id = g.guild_id
+            LEFT JOIN `char` ON `char`.`char_id` = gm.char_id
+            LEFT JOIN `login` l ON l.account_id = `char`.`account_id` AND l.group_id < ?
+            WHERE g.name = ?
+            GROUP BY
+                g.guild_id,
+                g.name,
+                g.master,
+                g.guild_lv,
+                g.max_member,
+                g.average_lv,
+                g.exp,
+                g.next_exp
+            LIMIT 1
+            "#;
 const ITEM_DETAIL_BUY_COLUMNS: &[&str] = &["buy", "price_buy"];
 const ITEM_DETAIL_SELL_COLUMNS: &[&str] = &["sell", "price_sell"];
 const ITEM_DETAIL_WEIGHT_COLUMNS: &[&str] = &["weight"];
@@ -1156,33 +1204,13 @@ impl RAthenaFrDatabase {
         }
     }
 
-    pub async fn top_guilds(&self, limit: u32) -> Result<Vec<GuildSummary>> {
-        let rows = sqlx::query(
-            r#"
-            SELECT
-                g.name AS guild_name,
-                g.master AS guild_master,
-                CAST(g.guild_lv AS SIGNED) AS guild_level,
-                CAST(g.connect_member AS SIGNED) AS online_members,
-                CAST(g.max_member AS SIGNED) AS max_members,
-                CAST(COUNT(c.char_id) AS SIGNED) AS members
-            FROM `guild` g
-            LEFT JOIN `char` c ON c.guild_id = g.guild_id
-            GROUP BY
-                g.guild_id,
-                g.name,
-                g.master,
-                g.guild_lv,
-                g.connect_member,
-                g.max_member
-            ORDER BY g.guild_lv DESC, members DESC, g.name ASC
-            LIMIT ?
-            "#,
-        )
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await
-        .context("récupération du classement des guildes")?;
+    pub async fn top_guilds(&self, group_threshold: i32, limit: u32) -> Result<Vec<GuildSummary>> {
+        let rows = sqlx::query(TOP_GUILDS_SQL)
+            .bind(group_threshold)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await
+            .context("récupération du classement des guildes")?;
 
         rows.into_iter()
             .map(|row| {
@@ -1198,39 +1226,17 @@ impl RAthenaFrDatabase {
             .collect()
     }
 
-    pub async fn find_guild(&self, name: &str) -> Result<Option<GuildDetails>> {
-        let row = sqlx::query(
-            r#"
-            SELECT
-                g.name AS guild_name,
-                g.master AS guild_master,
-                CAST(g.guild_lv AS SIGNED) AS guild_level,
-                CAST(g.connect_member AS SIGNED) AS online_members,
-                CAST(g.max_member AS SIGNED) AS max_members,
-                CAST(g.average_lv AS SIGNED) AS average_level,
-                CAST(g.exp AS SIGNED) AS guild_exp,
-                CAST(g.next_exp AS SIGNED) AS next_exp,
-                CAST(COUNT(c.char_id) AS SIGNED) AS members
-            FROM `guild` g
-            LEFT JOIN `char` c ON c.guild_id = g.guild_id
-            WHERE g.name = ?
-            GROUP BY
-                g.guild_id,
-                g.name,
-                g.master,
-                g.guild_lv,
-                g.connect_member,
-                g.max_member,
-                g.average_lv,
-                g.exp,
-                g.next_exp
-            LIMIT 1
-            "#,
-        )
-        .bind(name)
-        .fetch_optional(&self.pool)
-        .await
-        .context("find guild")?;
+    pub async fn find_guild(
+        &self,
+        name: &str,
+        group_threshold: i32,
+    ) -> Result<Option<GuildDetails>> {
+        let row = sqlx::query(FIND_GUILD_SQL)
+            .bind(group_threshold)
+            .bind(name)
+            .fetch_optional(&self.pool)
+            .await
+            .context("find guild")?;
 
         match row {
             Some(row) => Ok(Some(GuildDetails {
@@ -3229,6 +3235,18 @@ mod tests {
     fn quote_identifier_escapes_backticks() {
         assert_eq!(quote_identifier("safe_name"), "`safe_name`");
         assert_eq!(quote_identifier("bad`name"), "`bad``name`");
+    }
+
+    #[test]
+    fn guild_queries_count_online_members_from_joined_char_table() {
+        for sql in [TOP_GUILDS_SQL, FIND_GUILD_SQL] {
+            assert!(sql.contains("LEFT JOIN `guild_member` gm ON gm.guild_id = g.guild_id"));
+            assert!(sql.contains("LEFT JOIN `char` ON `char`.`char_id` = gm.char_id"));
+            assert!(sql.contains("`char`.`online` > 0"));
+            assert!(sql.contains("gm.char_id"));
+            assert!(!sql.contains("connect_member"));
+            assert!(!sql.contains("c.guild_id"));
+        }
     }
 
     #[test]

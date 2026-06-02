@@ -30,7 +30,12 @@ const CACHED_COMMAND_NAMES: &[&str] =
 const BUYING_STORE_TABLES: &[DatabaseTable] =
     &[DatabaseTable::BuyingStores, DatabaseTable::BuyingStoreItems];
 const CASTLE_TABLES: &[DatabaseTable] = &[DatabaseTable::GuildCastle];
-const GUILD_MEMBER_TABLES: &[DatabaseTable] = &[DatabaseTable::GuildMember];
+const GUILD_TABLES: &[DatabaseTable] = &[
+    DatabaseTable::Guild,
+    DatabaseTable::GuildMember,
+    DatabaseTable::Char,
+    DatabaseTable::Login,
+];
 const INVENTORY_TABLES: &[DatabaseTable] = &[DatabaseTable::Inventory];
 const ITEM_STORAGE_TABLES: &[DatabaseTable] = &[
     DatabaseTable::Inventory,
@@ -1456,13 +1461,26 @@ impl Handler {
     }
 
     async fn handle_guilds(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
+        if !self
+            .ensure_database_tables(context, command, GUILD_TABLES)
+            .await?
+        {
+            return Ok(());
+        }
+
         let (display_limit, query_limit) = self.list_limits(command);
+        let group_threshold = self.state.config.display.ranking_group_threshold();
         let guilds = cached_data(
             "guildes",
-            format!("limit={query_limit}"),
+            format!("limit={query_limit};group_threshold={group_threshold}"),
             self.state.config.cache.duration(GUILDS_CACHE_TTL_SECONDS),
             &self.state.cache.guilds,
-            async { self.state.database.top_guilds(query_limit).await },
+            async {
+                self.state
+                    .database
+                    .top_guilds(group_threshold, query_limit)
+                    .await
+            },
         )
         .await?;
 
@@ -1598,7 +1616,21 @@ impl Handler {
                 .await;
         };
 
-        let guild = self.state.database.find_guild(name).await?;
+        if !self
+            .ensure_database_tables(context, command, GUILD_TABLES)
+            .await?
+        {
+            return Ok(());
+        }
+
+        let guild = self
+            .state
+            .database
+            .find_guild(
+                name,
+                self.state.config.display.public_character_group_threshold(),
+            )
+            .await?;
         let embed = match guild {
             Some(guild) => embeds::guild_detail_embed(&guild),
             None => embeds::guild_not_found_embed(name),
@@ -1619,7 +1651,7 @@ impl Handler {
         };
 
         if !self
-            .ensure_database_tables(context, command, GUILD_MEMBER_TABLES)
+            .ensure_database_tables(context, command, GUILD_TABLES)
             .await?
         {
             return Ok(());
