@@ -1,6 +1,6 @@
 # Configuration
 
-Le projet conserve une configuration par variables d’environnement, chargées depuis l’environnement du processus ou depuis les fichiers `.env`, `.env.example` et `.env.docker.example`.
+Le projet conserve une configuration par variables d’environnement, chargées depuis l’environnement du processus ou depuis un fichier `.env`. Les fichiers `.env.example` et `.env.docker.example` sont des modèles à copier puis adapter.
 
 ## Discord
 
@@ -52,14 +52,11 @@ RATHENAFR_MAX_LIMIT=25
 - `anonymized`
 - `disabled`
 
-## Tables optionnelles
+## Tables rAthena
 
 ```env
 RATHENAFR_ITEM_DB_TABLE=item_db
 RATHENAFR_MOB_DB_TABLE=mob_db
-RATHENAFR_OPTIONAL_VENDING_ENABLED=true
-RATHENAFR_OPTIONAL_BUYINGSTORE_ENABLED=true
-RATHENAFR_OPTIONAL_LOGS_ENABLED=true
 ```
 
 Les tables item/mob acceptent `item_db` ou `item_db_re`, et `mob_db` ou `mob_db_re`.
