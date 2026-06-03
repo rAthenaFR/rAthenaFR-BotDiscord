@@ -234,9 +234,9 @@ const ITEM_DETAIL_SLOTS_COLUMNS: &[&str] = &["slots", "slot"];
 const MOB_RACE_COLUMNS: &[&str] = &["race", "Race"];
 const MOB_ELEMENT_COLUMNS: &[&str] = &["element", "Element"];
 const MOB_SIZE_COLUMNS: &[&str] = &["scale", "size", "Scale"];
+#[cfg(test)]
 const MOB_MVP_EXP_COLUMNS: &[&str] = &["mvp_exp", "mvpexp", "mexp"];
 const MVP_LOG_EMPTY_MESSAGE: &str = "Aucun MVP n’a encore été enregistré dans les logs.";
-const MOB_TABLE_MISSING_MESSAGE: &str = "La table des monstres est absente ou non configurée.";
 const MVP_LOG_KILLER_ID_COLUMNS: &[&str] =
     &["kill_char_id", "killer_char_id", "char_id", "src_charid"];
 const MVP_LOG_KILLER_NAME_COLUMNS: &[&str] = &["killer_name", "char_name", "name"];
@@ -407,6 +407,7 @@ fn find_column_dynamic(columns: &AvailableColumns, candidates: &[String]) -> Opt
     })
 }
 
+#[cfg(test)]
 fn mvp_drop_id_columns(columns: &AvailableColumns) -> Vec<String> {
     let mut matches = Vec::new();
 
@@ -2981,109 +2982,77 @@ impl RAthenaFrDatabase {
         ]))
     }
 
-    pub async fn mvp_list_lines(&self, preferred_table: &str, limit: u32) -> Result<Vec<String>> {
-        if !self.table_exists(preferred_table).await? {
-            return Ok(vec![MOB_TABLE_MISSING_MESSAGE.to_string()]);
+    pub async fn mvp_list_lines(&self, _preferred_table: &str, limit: u32) -> Result<Vec<String>> {
+        if !self.table_exists("rathenafr_mvp_regular_spawn").await? {
+            return Ok(vec![
+                "Vue `rathenafr_mvp_regular_spawn` absente. Importe d’abord la table MVP Athena puis crée la vue SQL.".to_string(),
+            ]);
         }
-        let Some(search_columns) = self.monster_search_columns(preferred_table).await? else {
-            return Ok(vec![MOB_TABLE_MISSING_MESSAGE.to_string()]);
-        };
-        let Some(columns) = self.table_columns(preferred_table).await? else {
-            return Ok(vec![MOB_TABLE_MISSING_MESSAGE.to_string()]);
-        };
-        let mvp_exp_column = columns.first(MOB_MVP_EXP_COLUMNS);
-        let mvp_drop_columns = mvp_drop_id_columns(&columns);
-        if mvp_exp_column.is_none() && mvp_drop_columns.is_empty() {
-            return Ok(vec![format!(
-                "Aucune colonne MVP détectée dans `{preferred_table}`."
-            )]);
-        };
-        let level_expression = search_columns
-            .level
-            .as_deref()
-            .map(cast_column_as_signed)
-            .unwrap_or_else(|| "NULL".to_string());
-        let hp_expression = search_columns
-            .hp
-            .as_deref()
-            .map(cast_column_as_signed)
-            .unwrap_or_else(|| "NULL".to_string());
-        let mvp_exp_expression = mvp_exp_column
-            .as_deref()
-            .map(cast_column_as_signed)
-            .unwrap_or_else(|| "NULL".to_string());
-        let where_clause = if let Some(mvp_exp_column) = mvp_exp_column.as_deref() {
-            format!("{} > 0", cast_column_as_signed(mvp_exp_column))
-        } else {
-            mvp_drop_columns
-                .iter()
-                .map(|column| format!("{} > 0", cast_column_as_signed(column)))
-                .collect::<Vec<_>>()
-                .join(" OR ")
-        };
-        let order_clause = if let Some(mvp_exp_column) = mvp_exp_column.as_deref() {
-            format!(
-                "{} DESC, {} ASC",
-                cast_column_as_signed(mvp_exp_column),
-                quote_identifier(&search_columns.id)
-            )
-        } else {
-            format!("{} ASC", quote_identifier(&search_columns.id))
-        };
-        let sql = format!(
+
+        let limit = limit.clamp(1, 500);
+
+        let query = format!(
             r#"
             SELECT
-                {} AS monster_id,
-                {} AS monster_name,
-                {} AS monster_level,
-                {} AS monster_hp,
-                {} AS mvp_exp
-            FROM {}
-            WHERE {where_clause}
-            ORDER BY {order_clause}
-            LIMIT ?
-            "#,
-            cast_column_as_signed(&search_columns.id),
-            cast_column_as_char(&search_columns.display_name),
-            level_expression,
-            hp_expression,
-            mvp_exp_expression,
-            quote_identifier(preferred_table),
+                CAST(monster_id AS SIGNED) AS monster_id,
+                monster_name,
+                aegis_name,
+                COALESCE(NULLIF(map_name, ''), 'inconnue') AS map_name,
+                CAST(ROUND(COALESCE(respawn_minutes, 0)) AS SIGNED) AS respawn_minutes,
+                CAST(ROUND(COALESCE(respawn_variance_minutes, 0)) AS SIGNED) AS respawn_variance_minutes
+            FROM rathenafr_mvp_regular_spawn
+            ORDER BY monster_name ASC, map_name ASC
+            LIMIT {limit}
+            "#
         );
-        let rows = sqlx::query(&sql)
-            .bind(limit)
+
+        let rows = sqlx::query(&query)
             .fetch_all(&self.pool)
             .await
-            .context("récupération de la liste des MVP")?;
+            .context("récupération de la liste des MVP réguliers")?;
 
-        Ok(join_limited_lines(
-            rows.into_iter()
-                .map(|row| {
-                    let id = row.try_get::<i64, _>("monster_id").unwrap_or_default();
-                    let name = row
-                        .try_get::<Option<String>, _>("monster_name")
-                        .ok()
-                        .flatten()
-                        .unwrap_or_else(|| format!("MVP {id}"));
-                    let level = row
-                        .try_get::<Option<i64>, _>("monster_level")
-                        .ok()
-                        .flatten();
-                    let hp = row.try_get::<Option<i64>, _>("monster_hp").ok().flatten();
-                    let mvp_exp = row.try_get::<Option<i64>, _>("mvp_exp").ok().flatten();
-                    let mut line = format!(
-                        "`{id}` - {name} - niveau `{}` - HP `{}`",
-                        level.unwrap_or_default(),
-                        hp.unwrap_or_default()
-                    );
-                    if let Some(mvp_exp) = mvp_exp.filter(|value| *value > 0) {
-                        line.push_str(&format!(" - EXP MVP `{mvp_exp}`"));
-                    }
-                    line
-                })
-                .collect(),
-            "Aucun MVP n’a été trouvé.",
-        ))
+        let mut lines = Vec::new();
+
+        for row in rows {
+            let monster_id = row.try_get::<i64, _>("monster_id")?;
+
+            let monster_name = row
+                .try_get::<Option<String>, _>("monster_name")?
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| format!("MVP #{monster_id}"));
+
+            let map_name = row
+                .try_get::<Option<String>, _>("map_name")?
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| "inconnue".to_string());
+
+            let respawn_minutes = row
+                .try_get::<Option<i64>, _>("respawn_minutes")?
+                .unwrap_or_default();
+
+            let variance_minutes = row
+                .try_get::<Option<i64>, _>("respawn_variance_minutes")?
+                .unwrap_or_default();
+
+            let respawn_text = if respawn_minutes > 0 && variance_minutes > 0 {
+                format!("{} min ± {} min", respawn_minutes, variance_minutes)
+            } else if respawn_minutes > 0 {
+                format!("{} min", respawn_minutes)
+            } else {
+                "respawn inconnu".to_string()
+            };
+
+            lines.push(format!(
+                "**{}** (`{}`) - `{}` - {}",
+                monster_name, monster_id, map_name, respawn_text
+            ));
+        }
+
+        if lines.is_empty() {
+            lines.push("Aucun MVP avec spawn régulier n’a été trouvé.".to_string());
+        }
+
+        Ok(lines)
     }
 
     pub async fn mvp_last_lines(

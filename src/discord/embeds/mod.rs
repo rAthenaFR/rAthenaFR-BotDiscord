@@ -856,6 +856,34 @@ pub fn text_embed(title: &str, description: impl Into<String>) -> CreateEmbed {
     info_embed(title, description)
 }
 
+pub fn mvp_list_panel_embed(lines: &[String], page: usize, page_size: usize) -> CreateEmbed {
+    let page_size = page_size.max(1);
+    let total_count = lines.len();
+    let total_pages = total_count.div_ceil(page_size).max(1);
+    let page = page.min(total_pages.saturating_sub(1));
+    let start = page.saturating_mul(page_size);
+    let end = start.saturating_add(page_size).min(total_count);
+
+    let description = if total_count == 0 {
+        "Aucun MVP avec spawn régulier n’a été trouvé.".to_string()
+    } else {
+        lines[start..end].join("\n")
+    };
+
+    CreateEmbed::new()
+        .title(brand_text("MVP réguliers"))
+        .description(brand_text(truncate_embed_field(&description, 3900)))
+        .color(COLOR_PURPLE)
+        .footer(serenity::all::CreateEmbedFooter::new(format!(
+            "{} - Page {}/{} - {} MVP régulier(s)",
+            footer_text(),
+            page + 1,
+            total_pages,
+            total_count
+        )))
+        .timestamp(Timestamp::now())
+}
+
 pub fn success_message_embed(title: &str, description: impl Into<String>) -> CreateEmbed {
     success_embed(title, description)
 }

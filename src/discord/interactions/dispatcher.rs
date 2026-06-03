@@ -12,9 +12,10 @@ use crate::rathenafr::{
 };
 use anyhow::Result;
 use serenity::all::{
-    async_trait, ActivityData, ApplicationId, Client, CommandDataOption, CommandDataOptionValue,
-    CommandInteraction, Context, CreateInteractionResponse, CreateInteractionResponseMessage,
-    EventHandler, GatewayIntents, Interaction, OnlineStatus, Ready,
+    async_trait, ActivityData, ApplicationId, ButtonStyle, Client, CommandDataOption,
+    CommandDataOptionValue, CommandInteraction, ComponentInteraction, Context, CreateActionRow,
+    CreateButton, CreateInteractionResponse, CreateInteractionResponseMessage, EventHandler,
+    GatewayIntents, Interaction, OnlineStatus, Ready,
 };
 use std::future::Future;
 use std::sync::Arc;
@@ -25,6 +26,8 @@ const STATUS_CACHE_TTL_SECONDS: u64 = 10;
 const GUILDS_CACHE_TTL_SECONDS: u64 = 30;
 const CASTLES_CACHE_TTL_SECONDS: u64 = 60;
 const MARKET_CACHE_TTL_SECONDS: u64 = 20;
+const MVP_LIST_COMPONENT_PREFIX: &str = "mvp_list:";
+const MVP_LIST_FETCH_LIMIT: u32 = 500;
 
 #[cfg(test)]
 const CACHED_COMMAND_NAMES: &[&str] =
@@ -118,46 +121,98 @@ impl EventHandler for Handler {
     }
 
     async fn interaction_create(&self, context: Context, interaction: Interaction) {
-        if let Interaction::Command(command) = interaction {
-            let timer = CommandTimer::start();
-            let result = self.handle_command(&context, &command).await;
-            let duration_ms = timer.elapsed_ms();
-            let command_name = command.data.name.as_str();
-            let guild_id = command.guild_id.map(|guild_id| guild_id.get());
-            let user_id = command.user.id.get();
+        match interaction {
+            Interaction::Command(command) => {
+                let timer = CommandTimer::start();
+                let result = self.handle_command(&context, &command).await;
+                let duration_ms = timer.elapsed_ms();
+                let command_name = command.data.name.as_str();
+                let guild_id = command.guild_id.map(|guild_id| guild_id.get());
+                let user_id = command.user.id.get();
 
-            match result {
-                Ok(()) => {
-                    info!(
-                        command = command_name,
-                        guild_id = ?guild_id,
-                        user_id = user_id,
-                        duration_ms = duration_ms,
-                        "Commande terminée avec succès."
-                    );
-                }
-                Err(why) => {
-                    error!(
-                        error = %format!("{why:#}"),
-                        command = command_name,
-                        guild_id = ?guild_id,
-                        user_id = user_id,
-                        duration_ms = duration_ms,
-                        "La commande a échoué."
-                    );
+                match result {
+                    Ok(()) => {
+                        info!(
+                            command = command_name,
+                            guild_id = ?guild_id,
+                            user_id = user_id,
+                            duration_ms = duration_ms,
+                            "Commande terminée avec succès."
+                        );
+                    }
+                    Err(why) => {
+                        error!(
+                            error = %format!("{why:#}"),
+                            command = command_name,
+                            guild_id = ?guild_id,
+                            user_id = user_id,
+                            duration_ms = duration_ms,
+                            "La commande a échoué."
+                        );
 
-                    let _ = command
-                        .create_response(
-                            &context.http,
-                            CreateInteractionResponse::Message(
-                                CreateInteractionResponseMessage::new()
-                                    .embed(embeds::command_error_embed(&why.to_string()))
-                                    .ephemeral(true),
-                            ),
-                        )
-                        .await;
+                        let _ = command
+                            .create_response(
+                                &context.http,
+                                CreateInteractionResponse::Message(
+                                    CreateInteractionResponseMessage::new()
+                                        .embed(embeds::command_error_embed(&why.to_string()))
+                                        .ephemeral(true),
+                                ),
+                            )
+                            .await;
+                    }
                 }
             }
+            Interaction::Component(component) => {
+                if !component
+                    .data
+                    .custom_id
+                    .starts_with(MVP_LIST_COMPONENT_PREFIX)
+                {
+                    return;
+                }
+
+                let timer = CommandTimer::start();
+                let result = self.handle_component(&context, &component).await;
+                let duration_ms = timer.elapsed_ms();
+                let custom_id = component.data.custom_id.as_str();
+                let guild_id = component.guild_id.map(|guild_id| guild_id.get());
+                let user_id = component.user.id.get();
+
+                match result {
+                    Ok(()) => {
+                        info!(
+                            component = custom_id,
+                            guild_id = ?guild_id,
+                            user_id = user_id,
+                            duration_ms = duration_ms,
+                            "Interaction composant terminée avec succès."
+                        );
+                    }
+                    Err(why) => {
+                        error!(
+                            error = %format!("{why:#}"),
+                            component = custom_id,
+                            guild_id = ?guild_id,
+                            user_id = user_id,
+                            duration_ms = duration_ms,
+                            "L'interaction composant a échoué."
+                        );
+
+                        let _ = component
+                            .create_response(
+                                &context.http,
+                                CreateInteractionResponse::Message(
+                                    CreateInteractionResponseMessage::new()
+                                        .embed(embeds::command_error_embed(&why.to_string()))
+                                        .ephemeral(true),
+                                ),
+                            )
+                            .await;
+                    }
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -541,15 +596,18 @@ impl Handler {
     }
 
     async fn handle_mvp_pack(&self, context: &Context, command: &CommandInteraction) -> Result<()> {
-        let (_display_limit, query_limit) = self.list_limits(command);
+        let (display_limit, query_limit) = self.list_limits(command);
         match subcommand_name(command).unwrap_or("list") {
             "list" => {
                 let lines = self
                     .state
                     .database
-                    .mvp_list_lines(&self.state.config.commands.mob_table_name, query_limit)
+                    .mvp_list_lines(
+                        &self.state.config.commands.mob_table_name,
+                        MVP_LIST_FETCH_LIMIT,
+                    )
                     .await?;
-                self.respond_lines(context, command, "MVP", lines, false)
+                self.respond_mvp_list_panel(context, command, lines, 0, display_limit as usize)
                     .await
             }
             "last" => {
@@ -2337,6 +2395,97 @@ impl Handler {
         Ok(())
     }
 
+    async fn handle_component(
+        &self,
+        context: &Context,
+        component: &ComponentInteraction,
+    ) -> Result<()> {
+        let Some(page_request) = parse_mvp_list_component_id(&component.data.custom_id) else {
+            component
+                .create_response(
+                    &context.http,
+                    CreateInteractionResponse::Message(
+                        CreateInteractionResponseMessage::new()
+                            .embed(embeds::error_embed(
+                                "Panneau MVP invalide ou expiré. Relance `/mvp list`.",
+                            ))
+                            .ephemeral(true),
+                    ),
+                )
+                .await?;
+
+            return Ok(());
+        };
+
+        let max_page_size = (self.state.config.display.max_limit as usize).max(1);
+        let page_size = page_request.page_size.clamp(1, max_page_size);
+        let lines = self
+            .state
+            .database
+            .mvp_list_lines(
+                &self.state.config.commands.mob_table_name,
+                MVP_LIST_FETCH_LIMIT,
+            )
+            .await?;
+
+        self.update_mvp_list_panel(context, component, lines, page_request.page, page_size)
+            .await
+    }
+
+    async fn respond_mvp_list_panel(
+        &self,
+        context: &Context,
+        command: &CommandInteraction,
+        lines: Vec<String>,
+        page: usize,
+        page_size: usize,
+    ) -> Result<()> {
+        let max_page_size = (self.state.config.display.max_limit as usize).max(1);
+        let page_size = page_size.clamp(1, max_page_size);
+        let page = clamp_mvp_list_page(page, lines.len(), page_size);
+        let components = mvp_list_components(page, page_size, lines.len());
+
+        command
+            .create_response(
+                &context.http,
+                CreateInteractionResponse::Message(
+                    CreateInteractionResponseMessage::new()
+                        .embed(embeds::mvp_list_panel_embed(&lines, page, page_size))
+                        .components(components),
+                ),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn update_mvp_list_panel(
+        &self,
+        context: &Context,
+        component: &ComponentInteraction,
+        lines: Vec<String>,
+        page: usize,
+        page_size: usize,
+    ) -> Result<()> {
+        let max_page_size = (self.state.config.display.max_limit as usize).max(1);
+        let page_size = page_size.clamp(1, max_page_size);
+        let page = clamp_mvp_list_page(page, lines.len(), page_size);
+        let components = mvp_list_components(page, page_size, lines.len());
+
+        component
+            .create_response(
+                &context.http,
+                CreateInteractionResponse::UpdateMessage(
+                    CreateInteractionResponseMessage::new()
+                        .embed(embeds::mvp_list_panel_embed(&lines, page, page_size))
+                        .components(components),
+                ),
+            )
+            .await?;
+
+        Ok(())
+    }
+
     async fn respond_error(
         &self,
         context: &Context,
@@ -2548,6 +2697,80 @@ impl Handler {
             .display
             .clamp_limit(integer_option(command, "limit"))
     }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+struct MvpListPageRequest {
+    page: usize,
+    page_size: usize,
+}
+
+fn parse_mvp_list_component_id(custom_id: &str) -> Option<MvpListPageRequest> {
+    let payload = custom_id.strip_prefix(MVP_LIST_COMPONENT_PREFIX)?;
+    let mut parts = payload.split(':');
+    let page = parts.next()?.parse::<usize>().ok()?;
+    let page_size = parts.next()?.parse::<usize>().ok()?;
+    let action = parts.next()?;
+
+    if parts.next().is_some()
+        || page_size == 0
+        || !matches!(action, "first" | "previous" | "next" | "last")
+    {
+        return None;
+    }
+
+    Some(MvpListPageRequest { page, page_size })
+}
+
+fn mvp_list_component_id(action: &str, page: usize, page_size: usize) -> String {
+    format!("{MVP_LIST_COMPONENT_PREFIX}{page}:{page_size}:{action}")
+}
+
+fn mvp_list_page_count(total_count: usize, page_size: usize) -> usize {
+    total_count.div_ceil(page_size.max(1)).max(1)
+}
+
+fn clamp_mvp_list_page(page: usize, total_count: usize, page_size: usize) -> usize {
+    page.min(mvp_list_page_count(total_count, page_size).saturating_sub(1))
+}
+
+fn mvp_list_components(page: usize, page_size: usize, total_count: usize) -> Vec<CreateActionRow> {
+    let page_size = page_size.max(1);
+    let page_count = mvp_list_page_count(total_count, page_size);
+
+    if page_count <= 1 {
+        return Vec::new();
+    }
+
+    let page = clamp_mvp_list_page(page, total_count, page_size);
+    let last_page = page_count.saturating_sub(1);
+
+    vec![CreateActionRow::Buttons(vec![
+        CreateButton::new(mvp_list_component_id("first", 0, page_size))
+            .label("Début")
+            .style(ButtonStyle::Secondary)
+            .disabled(page == 0),
+        CreateButton::new(mvp_list_component_id(
+            "previous",
+            page.saturating_sub(1),
+            page_size,
+        ))
+        .label("Précédent")
+        .style(ButtonStyle::Primary)
+        .disabled(page == 0),
+        CreateButton::new(mvp_list_component_id(
+            "next",
+            (page + 1).min(last_page),
+            page_size,
+        ))
+        .label("Suivant")
+        .style(ButtonStyle::Primary)
+        .disabled(page >= last_page),
+        CreateButton::new(mvp_list_component_id("last", last_page, page_size))
+            .label("Fin")
+            .style(ButtonStyle::Secondary)
+            .disabled(page >= last_page),
+    ])]
 }
 
 fn command_path(command: &CommandInteraction) -> String {
@@ -3026,6 +3249,38 @@ mod tests {
     #[test]
     fn command_path_keeps_simple_commands() {
         assert_eq!(command_path_from_parts("server", &[]), "server");
+    }
+
+    #[test]
+    fn mvp_list_component_id_round_trips_page_state() {
+        let custom_id = mvp_list_component_id("next", 3, 10);
+
+        assert_eq!(
+            parse_mvp_list_component_id(&custom_id),
+            Some(MvpListPageRequest {
+                page: 3,
+                page_size: 10,
+            })
+        );
+    }
+
+    #[test]
+    fn mvp_list_component_id_rejects_invalid_state() {
+        assert_eq!(parse_mvp_list_component_id("other:3:10"), None);
+        assert_eq!(parse_mvp_list_component_id("mvp_list:3:10"), None);
+        assert_eq!(parse_mvp_list_component_id("mvp_list:3:0:next"), None);
+        assert_eq!(parse_mvp_list_component_id("mvp_list:3:10:unknown"), None);
+        assert_eq!(
+            parse_mvp_list_component_id("mvp_list:3:10:next:extra"),
+            None
+        );
+    }
+
+    #[test]
+    fn mvp_list_page_helpers_keep_page_in_range() {
+        assert_eq!(mvp_list_page_count(61, 10), 7);
+        assert_eq!(clamp_mvp_list_page(99, 61, 10), 6);
+        assert_eq!(clamp_mvp_list_page(0, 0, 10), 0);
     }
 
     fn test_account_commands_config(
