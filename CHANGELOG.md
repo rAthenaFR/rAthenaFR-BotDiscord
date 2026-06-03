@@ -6,6 +6,7 @@
 
 - Ajout d’un panneau paginé pour `/mvp list` avec boutons `Début`, `Précédent`, `Suivant` et `Fin`.
 - Ajout du script `sql/rathenafr_mvp_regular_spawn.sql` pour créer `rathenafr_mvp_list` et la vue `rathenafr_mvp_regular_spawn`.
+- Ajout du script `sql/rathenafr_item_search.sql` pour créer et rafraîchir la source SQL utilisée par `/item info`.
 - Ajout du script `sql/create-gmmsg-queue-user.sql` pour les droits SQL du mode `/gmmsg` `sql_queue`.
 - Ajout des variables d’exemple `RATHENAFR_ACCOUNT_MANAGE_ENABLED`, `RATHENAFR_ACCOUNT_DELETE_ENABLED`, `RATHENAFR_ACCOUNT_MANAGE_MIN_ROLE` et `RATHENAFR_ACCOUNT_DELETE_MIN_ROLE`.
 - Ajout des scripts Windows `ci`, `docker-build`, `docker-up`, `docker-deploy`, `docker-logs`, `docker-down` et de la documentation `scripts/README_FR.md`.
@@ -13,6 +14,7 @@
 ### Modifié
 
 - `/mvp list` lit désormais directement la vue SQL `rathenafr_mvp_regular_spawn`.
+- `/db health` signale désormais aussi la présence de `rathenafr_item_search` dans les tables optionnelles.
 - Mise à jour de `sql/create-account-management-user.sql` avec le droit `UPDATE` sur `login` requis par `/staff account-manage`.
 - Alignement de `.env.example`, `.env.docker.example` et `docs/CONFIGURATION_FR.md` avec les variables réellement lues par le bot.
 - Mise à jour de la documentation SQL, installation, sécurité, GMMSG et commandes pour refléter les scripts fournis.
@@ -21,6 +23,7 @@
 ### Corrigé
 
 - Correction de l’affichage incomplet de `/mvp list` en récupérant tous les MVP réguliers disponibles dans la vue SQL.
+- Correction de `/item info`, qui lit désormais `rathenafr_item_search` et accepte ID, nom d’objet ou AegisName.
 - Correction des `custom_id` des boutons de pagination MVP pour éviter les doublons refusés par Discord.
 - Retrait des variables d’exemple non utilisées liées aux assets et aux anciennes options de tables optionnelles.
 

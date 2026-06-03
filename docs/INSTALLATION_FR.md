@@ -45,11 +45,15 @@ mariadb -u root -p ragnarok < sql/create-readonly-user.sql
 Installe les scripts optionnels selon les fonctionnalités activées :
 
 ```bash
+mariadb -u root -p ragnarok < sql/rathenafr_item_search.sql
 mariadb -u root -p ragnarok < sql/rathenafr_mvp_regular_spawn.sql
 mariadb -u root -p ragnarok < sql/discord_gmmsg_queue.sql
 mariadb -u root -p ragnarok < sql/create-gmmsg-queue-user.sql
 mariadb -u root -p ragnarok < sql/create-account-management-user.sql
 ```
+
+> [!IMPORTANT]
+> `sql/rathenafr_item_search.sql` crée et rafraîchit la table utilisée par `/item info` depuis `item_db` et/ou `item_db_re`.
 
 > [!IMPORTANT]
 > `sql/rathenafr_mvp_regular_spawn.sql` crée la table support et la vue de `/mvp list`, mais ne peuple pas `rathenafr_mvp_list`. Importe ensuite les données MVP Athena validées pour ton serveur.

@@ -12,6 +12,7 @@ Le dossier `sql/` contient les scripts d’installation et de droits à exécute
 | `sql/create-account-management-user.sql` | Ajoute les droits nécessaires à `/createaccount` et `/staff account-manage`. |
 | `sql/create-gmmsg-queue-user.sql` | Ajoute le droit `INSERT` sur `discord_gmmsg_queue` pour `/gmmsg` en mode `sql_queue`. |
 | `sql/discord_gmmsg_queue.sql` | Crée ou met à jour la table `discord_gmmsg_queue`. |
+| `sql/rathenafr_item_search.sql` | Crée et rafraîchit `rathenafr_item_search`, source SQL de `/item info`. |
 | `sql/rathenafr_mvp_regular_spawn.sql` | Crée `rathenafr_mvp_list` et la vue `rathenafr_mvp_regular_spawn` utilisée par `/mvp list`. |
 
 ## Permissions recommandées
@@ -66,6 +67,26 @@ La table attend une colonne `message` en `VARBINARY(180)` afin de stocker les oc
 > [!WARNING]
 > Ne donne pas `UPDATE`, `DELETE`, `DROP`, `ALTER` ou `CREATE` au bot pour gérer la file GMMSG. Ces droits relèvent de l’installation ou de la maintenance SQL, pas de l’exécution normale.
 
+## Items
+
+`/item info` lit la table `rathenafr_item_search`. Le script `sql/rathenafr_item_search.sql` crée la table avec les colonnes attendues par le bot et la rafraîchit depuis `item_db` et/ou `item_db_re` quand ces tables existent.
+
+La table expose les colonnes suivantes :
+
+- `item_id`
+- `item_name`
+- `aegis_name`
+- `item_type`
+- `item_subtype`
+- `slots`
+- `buy`
+- `sell`
+- `weight`
+- `attack`
+- `magic_attack`
+- `defense`
+- `equip_level_min`
+
 ## MVP réguliers
 
 `/mvp list` lit la vue `rathenafr_mvp_regular_spawn`. Le script `sql/rathenafr_mvp_regular_spawn.sql` crée la table support `rathenafr_mvp_list` et la vue filtrée sur les spawns réguliers.
@@ -117,6 +138,7 @@ Tables item/mob configurables :
 Tables optionnelles :
 
 - `rathenafr_mvp_list`
+- `rathenafr_item_search`
 - `rathenafr_mvp_regular_spawn`
 - `mob_skill_db`
 - `mvplog`

@@ -37,6 +37,7 @@ pub enum DatabaseTable {
     Inventory,
     ItemDb,
     ItemDbRe,
+    RAthenaFrItemSearch,
     Mail,
     MailAttachments,
     MobDb,
@@ -82,6 +83,7 @@ impl DatabaseTable {
             Self::Inventory => "inventory",
             Self::ItemDb => "item_db",
             Self::ItemDbRe => "item_db_re",
+            Self::RAthenaFrItemSearch => "rathenafr_item_search",
             Self::Mail => "mail",
             Self::MailAttachments => "mail_attachments",
             Self::MobDb => "mob_db",
@@ -102,6 +104,7 @@ impl DatabaseTable {
 use crate::rathenafr::models::*;
 
 const ITEM_SEARCH_TABLES: &[&str] = &["item_db", "item_db_re"];
+const RATHENAFR_ITEM_SEARCH_TABLE: &str = "rathenafr_item_search";
 const MOB_SEARCH_TABLES: &[&str] = &["mob_db", "mob_db_re"];
 const ITEM_AEGIS_COLUMN_CANDIDATES: &[&str] = &[
     "name_aegis",
@@ -158,6 +161,7 @@ const RELEASE_OPTIONAL_TABLES: &[DatabaseTable] = &[
     DatabaseTable::AccRegStr,
     DatabaseTable::ItemDb,
     DatabaseTable::ItemDbRe,
+    DatabaseTable::RAthenaFrItemSearch,
     DatabaseTable::MobDb,
     DatabaseTable::MobDbRe,
     DatabaseTable::MobSkillDb,
@@ -225,12 +229,6 @@ const FIND_GUILD_SQL: &str = r#"
                 g.next_exp
             LIMIT 1
             "#;
-const ITEM_DETAIL_BUY_COLUMNS: &[&str] = &["buy", "price_buy"];
-const ITEM_DETAIL_SELL_COLUMNS: &[&str] = &["sell", "price_sell"];
-const ITEM_DETAIL_WEIGHT_COLUMNS: &[&str] = &["weight"];
-const ITEM_DETAIL_ATTACK_COLUMNS: &[&str] = &["atk", "attack"];
-const ITEM_DETAIL_DEFENSE_COLUMNS: &[&str] = &["def", "defense"];
-const ITEM_DETAIL_SLOTS_COLUMNS: &[&str] = &["slots", "slot"];
 const MOB_RACE_COLUMNS: &[&str] = &["race", "Race"];
 const MOB_ELEMENT_COLUMNS: &[&str] = &["element", "Element"];
 const MOB_SIZE_COLUMNS: &[&str] = &["scale", "size", "Scale"];
@@ -666,7 +664,6 @@ fn item_search_entry_from_row(row: MySqlRow) -> Result<ItemSearchEntry> {
         aegis_name,
         display_name,
         item_type,
-        source_table: row.try_get("source_table")?,
     })
 }
 
@@ -2504,101 +2501,125 @@ impl RAthenaFrDatabase {
     pub async fn item_detail_lines(
         &self,
         query: &str,
-        preferred_table: &str,
+        _preferred_table: &str,
     ) -> Result<Option<Vec<String>>> {
-        let Some(item) = self.search_items(query, 1).await?.into_iter().next() else {
+        let query = query.trim();
+        if query.is_empty() {
             return Ok(None);
-        };
-        let table_name = if self.table_exists(preferred_table).await? {
-            preferred_table
-        } else {
-            item.source_table.as_str()
-        };
-        let Some(search_columns) = self.item_search_columns(table_name).await? else {
-            return Ok(Some(vec![
-                format!("ID: `{}`", item.item_id),
-                format!("Nom: `{}`", item.display_name),
-                format!("Type: `{}`", item.item_type),
-                format!("Source: `{}`", item.source_table),
-            ]));
-        };
-        let Some(columns) = self.table_columns(table_name).await? else {
-            return Ok(None);
-        };
+        }
 
-        let item_type_expression = search_columns
-            .item_type
-            .as_deref()
-            .map(cast_column_as_char)
-            .unwrap_or_else(|| "NULL".to_string());
-        let sql = format!(
+        let item_id = parse_search_id(query).unwrap_or(0);
+        let row = sqlx::query(
             r#"
             SELECT
-                {} AS item_id,
-                {} AS aegis_name,
-                {} AS display_name,
-                {} AS item_type,
-                {},
-                {},
-                {},
-                {},
-                {},
-                {}
-            FROM {}
-            WHERE {} = ?
+                CAST(item_id AS SIGNED) AS item_id,
+                item_name,
+                aegis_name,
+                item_type,
+                item_subtype,
+                CAST(slots AS SIGNED) AS slots,
+                CAST(buy AS SIGNED) AS buy,
+                CAST(sell AS SIGNED) AS sell,
+                CAST(weight AS SIGNED) AS weight,
+                CAST(attack AS SIGNED) AS attack,
+                CAST(magic_attack AS SIGNED) AS magic_attack,
+                CAST(defense AS SIGNED) AS defense,
+                CAST(equip_level_min AS SIGNED) AS equip_level_min
+            FROM `rathenafr_item_search`
+            WHERE item_id = ?
+               OR LOWER(item_name) = LOWER(?)
+               OR LOWER(aegis_name) = LOWER(?)
+               OR item_name LIKE CONCAT('%', ?, '%')
+               OR aegis_name LIKE CONCAT('%', ?, '%')
+            ORDER BY
+              CASE
+                WHEN item_id = ? THEN 0
+                WHEN LOWER(item_name) = LOWER(?) THEN 1
+                WHEN LOWER(aegis_name) = LOWER(?) THEN 2
+                ELSE 3
+              END,
+              item_name ASC
             LIMIT 1
             "#,
-            cast_column_as_signed(&search_columns.id),
-            cast_column_as_char(&search_columns.aegis_name),
-            cast_column_as_char(&search_columns.display_name),
-            item_type_expression,
-            optional_signed_select(&columns, ITEM_DETAIL_BUY_COLUMNS, "buy_price"),
-            optional_signed_select(&columns, ITEM_DETAIL_SELL_COLUMNS, "sell_price"),
-            optional_signed_select(&columns, ITEM_DETAIL_WEIGHT_COLUMNS, "item_weight"),
-            optional_signed_select(&columns, ITEM_DETAIL_ATTACK_COLUMNS, "attack"),
-            optional_signed_select(&columns, ITEM_DETAIL_DEFENSE_COLUMNS, "defense"),
-            optional_signed_select(&columns, ITEM_DETAIL_SLOTS_COLUMNS, "slots"),
-            quote_identifier(table_name),
-            cast_column_as_signed(&search_columns.id),
-        );
-
-        let row = sqlx::query(&sql)
-            .bind(item.item_id)
-            .fetch_optional(&self.pool)
-            .await
-            .with_context(|| format!("récupération du détail d’item dans {table_name}"))?;
+        )
+        .bind(item_id)
+        .bind(query)
+        .bind(query)
+        .bind(query)
+        .bind(query)
+        .bind(item_id)
+        .bind(query)
+        .bind(query)
+        .fetch_optional(&self.pool)
+        .await
+        .with_context(|| {
+            format!("récupération du détail d’item dans {RATHENAFR_ITEM_SEARCH_TABLE}")
+        })?;
         let Some(row) = row else {
             return Ok(None);
+        };
+
+        let text_value = |value: Option<String>| {
+            value
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| "N/A".to_string())
+        };
+        let number_value = |value: Option<i64>| {
+            value
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "N/A".to_string())
         };
 
         let mut lines = Vec::new();
         lines.push(format!("ID: `{}`", row.try_get::<i64, _>("item_id")?));
         lines.push(format!(
-            "Nom: `{}` / `{}`",
-            row.try_get::<Option<String>, _>("display_name")?
-                .unwrap_or_else(|| item.display_name.clone()),
-            row.try_get::<Option<String>, _>("aegis_name")?
-                .unwrap_or_else(|| item.aegis_name.clone())
+            "Nom: `{}`",
+            text_value(row.try_get::<Option<String>, _>("item_name")?)
+        ));
+        lines.push(format!(
+            "AegisName: `{}`",
+            text_value(row.try_get::<Option<String>, _>("aegis_name")?)
         ));
         lines.push(format!(
             "Type: `{}`",
-            row.try_get::<Option<String>, _>("item_type")?
-                .unwrap_or_else(|| item.item_type.clone())
+            text_value(row.try_get::<Option<String>, _>("item_type")?)
         ));
-        lines.push(format!("Source: `{table_name}`"));
-
-        for (label, alias) in [
-            ("Prix achat", "buy_price"),
-            ("Prix vente", "sell_price"),
-            ("Poids", "item_weight"),
-            ("Attaque", "attack"),
-            ("Defense", "defense"),
-            ("Slots", "slots"),
-        ] {
-            if let Some(value) = row.try_get::<Option<i64>, _>(alias)? {
-                lines.push(format!("{label}: `{value}`"));
-            }
-        }
+        lines.push(format!(
+            "Sous-type: `{}`",
+            text_value(row.try_get::<Option<String>, _>("item_subtype")?)
+        ));
+        lines.push(format!(
+            "Slots: `{}`",
+            number_value(row.try_get::<Option<i64>, _>("slots")?)
+        ));
+        lines.push(format!(
+            "Prix achat: `{}`",
+            number_value(row.try_get::<Option<i64>, _>("buy")?)
+        ));
+        lines.push(format!(
+            "Prix vente: `{}`",
+            number_value(row.try_get::<Option<i64>, _>("sell")?)
+        ));
+        lines.push(format!(
+            "Poids: `{}`",
+            number_value(row.try_get::<Option<i64>, _>("weight")?)
+        ));
+        lines.push(format!(
+            "ATK: `{}`",
+            number_value(row.try_get::<Option<i64>, _>("attack")?)
+        ));
+        lines.push(format!(
+            "MATK: `{}`",
+            number_value(row.try_get::<Option<i64>, _>("magic_attack")?)
+        ));
+        lines.push(format!(
+            "DEF: `{}`",
+            number_value(row.try_get::<Option<i64>, _>("defense")?)
+        ));
+        lines.push(format!(
+            "Niveau minimum: `{}`",
+            number_value(row.try_get::<Option<i64>, _>("equip_level_min")?)
+        ));
 
         Ok(Some(lines))
     }

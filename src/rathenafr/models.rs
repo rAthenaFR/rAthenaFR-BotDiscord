@@ -23,7 +23,6 @@ pub struct ItemSearchEntry {
     pub aegis_name: String,
     pub display_name: String,
     pub item_type: String,
-    pub source_table: String,
 }
 
 #[derive(Debug, Clone)]
