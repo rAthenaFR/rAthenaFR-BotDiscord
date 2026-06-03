@@ -1,2 +1,2 @@
 @echo off
-docker compose -f docker-compose.yml up -d --build
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0docker-run.ps1"

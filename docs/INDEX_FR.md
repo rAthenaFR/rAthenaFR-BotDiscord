@@ -23,6 +23,7 @@ Documentation française de rAthenaFR Discord Bot pour le projet rAthena.
 ## Maintenance
 
 - [Développement](DEVELOPMENT_FR.md) : commandes locales et règles de contribution.
+- [Scripts Windows](../scripts/README_FR.md) : raccourcis PowerShell et CMD pour Cargo et Docker Compose.
 - [Guide contributeur](CONTRIBUTOR_GUIDE_FR.md) : ajout propre d’une commande.
 - [Architecture](ARCHITECTURE_FR.md) : organisation du code.
 - [Sécurité](SECURITY_FR.md) : règles de sécurité, secrets et permissions.

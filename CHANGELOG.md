@@ -8,6 +8,7 @@
 - Ajout du script `sql/rathenafr_mvp_regular_spawn.sql` pour créer `rathenafr_mvp_list` et la vue `rathenafr_mvp_regular_spawn`.
 - Ajout du script `sql/create-gmmsg-queue-user.sql` pour les droits SQL du mode `/gmmsg` `sql_queue`.
 - Ajout des variables d’exemple `RATHENAFR_ACCOUNT_MANAGE_ENABLED`, `RATHENAFR_ACCOUNT_DELETE_ENABLED`, `RATHENAFR_ACCOUNT_MANAGE_MIN_ROLE` et `RATHENAFR_ACCOUNT_DELETE_MIN_ROLE`.
+- Ajout des scripts Windows `ci`, `docker-build`, `docker-up`, `docker-deploy`, `docker-logs`, `docker-down` et de la documentation `scripts/README_FR.md`.
 
 ### Modifié
 
@@ -15,6 +16,7 @@
 - Mise à jour de `sql/create-account-management-user.sql` avec le droit `UPDATE` sur `login` requis par `/staff account-manage`.
 - Alignement de `.env.example`, `.env.docker.example` et `docs/CONFIGURATION_FR.md` avec les variables réellement lues par le bot.
 - Mise à jour de la documentation SQL, installation, sécurité, GMMSG et commandes pour refléter les scripts fournis.
+- Alignement des wrappers `.cmd` sur les scripts PowerShell afin d’utiliser la racine du dépôt et le même target Cargo dédié.
 
 ### Corrigé
 

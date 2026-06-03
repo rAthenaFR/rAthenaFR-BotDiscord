@@ -55,6 +55,12 @@ GRANT INSERT ON `ragnarok`.`login` TO 'rathenafr_bot'@'%';
 docker compose run --rm rathenafr-discord-bot --deploy
 ```
 
+Équivalent Windows :
+
+```powershell
+.\scripts\docker-deploy.ps1
+```
+
 Refais cette commande après tout changement de commande slash. Elle retire aussi les anciennes commandes hors scope du serveur Discord.
 
 > [!IMPORTANT]
@@ -67,6 +73,13 @@ Refais cette commande après tout changement de commande slash. Elle retire auss
 ```bash
 docker compose up -d --build
 docker compose logs -f rathenafr-discord-bot
+```
+
+Équivalents Windows :
+
+```powershell
+.\scripts\docker-up.ps1
+.\scripts\docker-logs.ps1
 ```
 
 ## Checklist

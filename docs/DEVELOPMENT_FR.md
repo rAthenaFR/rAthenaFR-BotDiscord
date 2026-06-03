@@ -27,16 +27,34 @@ Ou :
 make ci
 ```
 
+Sous Windows, le dossier `scripts/` fournit les mêmes raccourcis avec un target Cargo dédié :
+
+```powershell
+.\scripts\ci.ps1
+```
+
 ## Lancer localement
 
 ```bash
 cargo run
 ```
 
+Équivalent Windows :
+
+```powershell
+.\scripts\dev-run.ps1
+```
+
 Déployer les commandes :
 
 ```bash
 cargo run -- --deploy
+```
+
+Équivalent Windows :
+
+```powershell
+.\scripts\dev-deploy.ps1
 ```
 
 > [!TIP]

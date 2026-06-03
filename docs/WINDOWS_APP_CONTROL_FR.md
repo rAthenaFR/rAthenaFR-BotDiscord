@@ -20,5 +20,13 @@ cargo run
 
 Les scripts PowerShell fournis utilisent déjà un dossier dédié dans `%LOCALAPPDATA%`.
 
+Scripts concernés :
+
+- `scripts\dev-run.ps1`
+- `scripts\dev-deploy.ps1`
+- `scripts\ci.ps1`
+- `scripts\build-release.ps1`
+- `scripts\clean-local-build.ps1`
+
 > [!TIP]
 > Si le problème persiste, supprime l’ancien dossier `target` du projet après avoir fermé les processus Rust en cours.
