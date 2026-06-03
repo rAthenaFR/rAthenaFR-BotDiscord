@@ -86,6 +86,7 @@ Le bot convertit le message Discord UTF-8 en Windows-1252 avant insertion SQL lo
 ## Table SQL
 
 Le script SQL d’installation attendu est `sql/discord_gmmsg_queue.sql`.
+Le script de droits correspondant pour l’utilisateur du bot est `sql/create-gmmsg-queue-user.sql`.
 
 Schéma attendu :
 

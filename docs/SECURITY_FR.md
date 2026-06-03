@@ -3,7 +3,7 @@
 ## Principes
 
 - Toutes les commandes SQL de consultation sont en lecture seule.
-- `/createaccount` est la seule commande conservée qui peut écrire en base, uniquement si elle est activée.
+- `/createaccount`, `/staff account-manage` et `/gmmsg` en mode `sql_queue` sont les seules fonctionnalités qui peuvent écrire en base, uniquement si elles sont activées.
 - Les commandes staff utilisent des réponses éphémères pour les données sensibles.
 - Les mots de passe, hashes, e-mails privés et IP complètes ne doivent pas être affichés.
 - `/gmmsg` peut écrire dans la file SQL `discord_gmmsg_queue` si `RATHENAFR_GMMSG_MODE=sql_queue`; il n’exécute jamais de shell.
@@ -41,6 +41,12 @@ Permission optionnelle pour `/createaccount` :
 GRANT INSERT ON `ragnarok`.`login` TO 'rathenafr_bot'@'%';
 ```
 
+Permission optionnelle pour `/staff account-manage` :
+
+```sql
+GRANT UPDATE ON `ragnarok`.`login` TO 'rathenafr_bot'@'%';
+```
+
 Permission optionnelle pour `/gmmsg` en mode `sql_queue` :
 
 ```sql
@@ -50,7 +56,8 @@ GRANT INSERT ON `ragnarok`.`discord_gmmsg_queue` TO 'rathenafr_bot'@'%';
 > [!CAUTION]
 > **Droits à ne pas accorder**
 >
-> Ne donne pas `UPDATE`, `DELETE`, `DROP`, `ALTER` ou `CREATE` au bot pour cette version.
+> Ne donne pas `DELETE`, `DROP`, `ALTER` ou `CREATE` au bot.
+> `UPDATE` doit rester limité à `login` et uniquement si `/staff account-manage` est activée.
 
 ## `/gmmsg`
 

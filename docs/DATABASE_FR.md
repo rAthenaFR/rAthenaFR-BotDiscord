@@ -1,6 +1,18 @@
 # Base de données
 
-Le bot doit fonctionner avec un utilisateur SQL en lecture seule pour toutes les commandes publiques, staff, modération, debug, audit et DB.
+Le bot doit fonctionner avec un utilisateur SQL en lecture seule par défaut. Les écritures SQL sont limitées aux fonctionnalités explicitement activées : `/createaccount`, `/staff account-manage` et `/gmmsg` en mode `sql_queue`.
+
+## Scripts fournis
+
+Le dossier `sql/` contient les scripts d’installation et de droits à exécuter manuellement avec un utilisateur administrateur MariaDB/MySQL :
+
+| Script | Usage |
+|---|---|
+| `sql/create-readonly-user.sql` | Crée l’utilisateur bot avec `SELECT` sur la base rAthena. |
+| `sql/create-account-management-user.sql` | Ajoute les droits nécessaires à `/createaccount` et `/staff account-manage`. |
+| `sql/create-gmmsg-queue-user.sql` | Ajoute le droit `INSERT` sur `discord_gmmsg_queue` pour `/gmmsg` en mode `sql_queue`. |
+| `sql/discord_gmmsg_queue.sql` | Crée ou met à jour la table `discord_gmmsg_queue`. |
+| `sql/rathenafr_mvp_regular_spawn.sql` | Crée `rathenafr_mvp_list` et la vue `rathenafr_mvp_regular_spawn` utilisée par `/mvp list`. |
 
 ## Permissions recommandées
 
@@ -9,9 +21,10 @@ GRANT SELECT ON `ragnarok`.* TO 'rathenafr_bot'@'%';
 ```
 
 > [!CAUTION]
-> **Droits SQL interdits**
+> **Droits SQL sensibles**
 >
-> Ne donne pas `UPDATE`, `DELETE`, `DROP`, `ALTER` ou `CREATE` au bot pour cette version.
+> Ne donne pas `DELETE`, `DROP`, `ALTER` ou `CREATE` à l’utilisateur d’exécution du bot.
+> `UPDATE` sur `login` est nécessaire uniquement si `/staff account-manage` est activée.
 
 ## Exception createaccount
 
@@ -23,7 +36,17 @@ Permission minimale additionnelle :
 GRANT INSERT ON `ragnarok`.`login` TO 'rathenafr_bot'@'%';
 ```
 
-Aucune autre commande de cette version n’est censée écrire en base.
+## Exception account-management staff
+
+Si `RATHENAFR_ACCOUNT_MANAGE_ENABLED=true`, `/staff account-manage` modifie uniquement des champs ciblés de `login`.
+
+Permissions minimales additionnelles :
+
+```sql
+GRANT SELECT ON `ragnarok`.`login` TO 'rathenafr_bot'@'%';
+GRANT SELECT ON `ragnarok`.`char` TO 'rathenafr_bot'@'%';
+GRANT UPDATE ON `ragnarok`.`login` TO 'rathenafr_bot'@'%';
+```
 
 ## Exception GMMSG SQL Queue
 
@@ -42,6 +65,20 @@ La table attend une colonne `message` en `VARBINARY(180)` afin de stocker les oc
 
 > [!WARNING]
 > Ne donne pas `UPDATE`, `DELETE`, `DROP`, `ALTER` ou `CREATE` au bot pour gérer la file GMMSG. Ces droits relèvent de l’installation ou de la maintenance SQL, pas de l’exécution normale.
+
+## MVP réguliers
+
+`/mvp list` lit la vue `rathenafr_mvp_regular_spawn`. Le script `sql/rathenafr_mvp_regular_spawn.sql` crée la table support `rathenafr_mvp_list` et la vue filtrée sur les spawns réguliers.
+
+La table `rathenafr_mvp_list` doit ensuite être peuplée par l’import MVP Athena validé pour le serveur. La vue expose les colonnes attendues par le bot :
+
+- `monster_id`
+- `monster_name`
+- `aegis_name`
+- `map_name`
+- `respawn_minutes`
+- `respawn_variance_minutes`
+- `source`
 
 ## Tables principales
 
@@ -79,6 +116,8 @@ Tables item/mob configurables :
 
 Tables optionnelles :
 
+- `rathenafr_mvp_list`
+- `rathenafr_mvp_regular_spawn`
 - `mob_skill_db`
 - `mvplog`
 - `picklog`

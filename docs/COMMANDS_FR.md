@@ -26,7 +26,7 @@ Cette page décrit les packs de commandes publics et staff de la première versi
 | `/who-drops item:` | Monstres qui drop un item. |
 | `/mob info mob:` | Fiche monstre par nom ou ID. |
 | `/mob drops mob:` | Drops d’un monstre. |
-| `/mvp list` | Liste des MVP si les colonnes MVP existent. |
+| `/mvp list` | Panneau paginé des MVP réguliers depuis `rathenafr_mvp_regular_spawn`. |
 | `/mvp last` | Dernières lignes de `mvplog` si la table est disponible. |
 | `/mvp top` | Vue compacte depuis `mvplog` si la table est disponible. |
 | `/top level` | Classement par base level. |

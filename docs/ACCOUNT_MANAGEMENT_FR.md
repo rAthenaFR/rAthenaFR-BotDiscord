@@ -91,6 +91,8 @@ bot avec une procédure SQL dédiée et vérifiée.
 
 Sans création ni gestion staff, `SELECT` suffit.
 
+Le script fourni `sql/create-account-management-user.sql` regroupe les droits nécessaires si tu veux activer `/createaccount` et `/staff account-manage`.
+
 Pour activer `/createaccount`, ajoute uniquement :
 
 ```sql
