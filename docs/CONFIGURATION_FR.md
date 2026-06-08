@@ -61,6 +61,36 @@ RATHENAFR_MOB_DB_TABLE=mob_db
 
 Les tables item/mob acceptent `item_db` ou `item_db_re`, et `mob_db` ou `mob_db_re`.
 
+## Rates EXP et drops
+
+Les tables SQL rAthena contiennent les valeurs de base. Pour que `/mob info` et
+`/mob drops` appliquent les rates du map-server, recopie les paramètres actifs
+de `conf/import/battle_conf.txt` dans les variables
+`RATHENAFR_BATTLE_*` fournies dans `.env.example`.
+
+```env
+RATHENAFR_BATTLE_RATES_CONFIGURED=true
+RATHENAFR_BATTLE_BASE_EXP_RATE=1500
+RATHENAFR_BATTLE_JOB_EXP_RATE=1500
+RATHENAFR_BATTLE_MVP_EXP_RATE=1000
+RATHENAFR_BATTLE_ITEM_RATE_COMMON=500
+RATHENAFR_BATTLE_ITEM_RATE_COMMON_BOSS=300
+RATHENAFR_BATTLE_ITEM_RATE_MVP=200
+```
+
+Laisse `RATHENAFR_BATTLE_RATES_CONFIGURED=false` tant que les valeurs ne sont
+pas synchronisées avec le map-server. Dans ce cas, le bot masque les
+pourcentages ajustés au lieu d’afficher les taux SQL bruts comme taux serveur.
+
+Si `db/import/mob_item_ratio.yml` contient des overrides, configure
+`RATHENAFR_BATTLE_ITEM_RATIO_OVERRIDES=true`. Les taux sont alors masqués, car
+ces overrides ne peuvent pas être déduits de la base SQL.
+
+Les taux affichés restent antérieurs aux modificateurs propres au joueur :
+pénalité de niveau Renewal, VIP, LUK, équipement, effets temporaires et partage
+d’EXP. `/mvp last` affiche pour sa part l’EXP réellement attribuée et enregistrée
+dans `mvplog`.
+
 ## Configuration de `/gmmsg`
 
 ```env

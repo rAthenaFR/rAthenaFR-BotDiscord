@@ -554,7 +554,11 @@ impl Handler {
                 let lines = self
                     .state
                     .database
-                    .mob_detail_lines(mob, &self.state.config.commands.mob_table_name)
+                    .mob_detail_lines(
+                        mob,
+                        &self.state.config.commands.mob_table_name,
+                        &self.state.config.server_rates,
+                    )
                     .await?;
                 match lines {
                     Some(lines) => {
@@ -573,20 +577,28 @@ impl Handler {
                         .respond_error(context, command, "Option obligatoire manquante : mob.")
                         .await;
                 };
-                let (_display_limit, query_limit) = self.list_limits(command);
-                let lines = self
+                let drops = self
                     .state
                     .database
-                    .mob_drop_lines(mob, &self.state.config.commands.mob_table_name, query_limit)
+                    .mob_drops(
+                        mob,
+                        &self.state.config.commands.mob_table_name,
+                        &self.state.config.server_rates,
+                    )
                     .await?;
-                match lines {
-                    Some(lines) => {
-                        self.respond_lines(context, command, "Drops monstre", lines, false)
+                match drops {
+                    Some(drops) => {
+                        self.respond_embed(context, command, embeds::mob_drops_embed(&drops), false)
                             .await
                     }
                     None => {
-                        self.respond_error(context, command, "Aucun monstre n’a été trouvé.")
-                            .await
+                        self.respond_embed(
+                            context,
+                            command,
+                            embeds::monster_not_found_embed(),
+                            false,
+                        )
+                        .await
                     }
                 }
             }

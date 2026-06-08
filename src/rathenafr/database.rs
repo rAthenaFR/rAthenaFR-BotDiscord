@@ -1,4 +1,6 @@
-use crate::config::{AccountPasswordMode, DatabaseConfig};
+use crate::config::{
+    AccountPasswordMode, DatabaseConfig, DropRateBounds, DropRateSet, ServerRatesConfig,
+};
 use anyhow::{Context, Result};
 use sqlx::{mysql::MySqlPoolOptions, mysql::MySqlRow, MySqlPool, Row};
 use std::time::Duration;
@@ -232,7 +234,6 @@ const FIND_GUILD_SQL: &str = r#"
 const MOB_RACE_COLUMNS: &[&str] = &["race", "Race"];
 const MOB_ELEMENT_COLUMNS: &[&str] = &["element", "Element"];
 const MOB_SIZE_COLUMNS: &[&str] = &["scale", "size", "Scale"];
-#[cfg(test)]
 const MOB_MVP_EXP_COLUMNS: &[&str] = &["mvp_exp", "mvpexp", "mexp"];
 const MVP_LOG_EMPTY_MESSAGE: &str = "Aucun MVP n’a encore été enregistré dans les logs.";
 const MVP_LOG_KILLER_ID_COLUMNS: &[&str] =
@@ -513,12 +514,154 @@ fn drop_item_match_condition(column_name: &str) -> String {
     )
 }
 
-fn format_drop_rate(rate: Option<i64>) -> String {
-    match rate {
-        Some(value) if value > 0 => format!("{} ({:.2}%)", value, value as f64 / 100.0),
-        Some(value) => value.to_string(),
-        None => "taux inconnu".to_string(),
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum MonsterRateKind {
+    Normal,
+    Boss,
+    Mvp,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum ItemDropCategory {
+    Common,
+    Heal,
+    Use,
+    Equip,
+    Card,
+}
+
+fn monster_rate_kind(
+    mode_mvp: Option<i64>,
+    monster_class: Option<&str>,
+    mvp_exp: Option<i64>,
+) -> MonsterRateKind {
+    if mode_mvp.is_some_and(|value| value > 0) || mvp_exp.is_some_and(|value| value > 0) {
+        MonsterRateKind::Mvp
+    } else if monster_class.is_some_and(|value| value.eq_ignore_ascii_case("Boss")) {
+        MonsterRateKind::Boss
+    } else {
+        MonsterRateKind::Normal
     }
+}
+
+fn item_drop_category(item_type: &str) -> ItemDropCategory {
+    match item_type {
+        "Healing" => ItemDropCategory::Heal,
+        "Usable" | "Cash" => ItemDropCategory::Use,
+        "Weapon" | "Armor" | "PetArmor" => ItemDropCategory::Equip,
+        "Card" => ItemDropCategory::Card,
+        _ => ItemDropCategory::Common,
+    }
+}
+
+fn rate_for_monster(rate: DropRateSet, monster_kind: MonsterRateKind) -> u32 {
+    match monster_kind {
+        MonsterRateKind::Normal => rate.normal,
+        MonsterRateKind::Boss => rate.boss,
+        MonsterRateKind::Mvp => rate.mvp,
+    }
+}
+
+fn drop_rate_parameters(
+    rates: &ServerRatesConfig,
+    category: ItemDropCategory,
+    monster_kind: MonsterRateKind,
+    is_mvp_reward: bool,
+) -> (u32, DropRateBounds) {
+    if is_mvp_reward {
+        return (rates.item_rate_mvp, rates.item_drop_mvp);
+    }
+
+    match category {
+        ItemDropCategory::Common => (
+            rate_for_monster(rates.item_rate_common, monster_kind),
+            rates.item_drop_common,
+        ),
+        ItemDropCategory::Heal => (
+            rate_for_monster(rates.item_rate_heal, monster_kind),
+            rates.item_drop_heal,
+        ),
+        ItemDropCategory::Use => (
+            rate_for_monster(rates.item_rate_use, monster_kind),
+            rates.item_drop_use,
+        ),
+        ItemDropCategory::Equip => (
+            rate_for_monster(rates.item_rate_equip, monster_kind),
+            rates.item_drop_equip,
+        ),
+        ItemDropCategory::Card => (
+            rate_for_monster(rates.item_rate_card, monster_kind),
+            rates.item_drop_card,
+        ),
+    }
+}
+
+fn adjusted_drop_rate(
+    base_rate: i64,
+    rate_adjust: u32,
+    bounds: DropRateBounds,
+    logarithmic: bool,
+) -> u32 {
+    if rate_adjust == 0 {
+        return 0;
+    }
+
+    let base_rate = base_rate.max(0) as f64;
+    let adjusted = if logarithmic && rate_adjust > 0 && rate_adjust != 100 && base_rate > 0.0 {
+        base_rate * (5.0 - base_rate.log10()).powf((rate_adjust as f64 / 100.0).ln() / 5.0_f64.ln())
+            + 0.5
+    } else {
+        base_rate * rate_adjust as f64 / 100.0
+    };
+
+    (adjusted as u32).clamp(bounds.min, bounds.max)
+}
+
+fn server_drop_rate(
+    base_rate: Option<i64>,
+    item_type: &str,
+    monster_kind: MonsterRateKind,
+    is_mvp_reward: bool,
+    rates: &ServerRatesConfig,
+) -> Option<f64> {
+    let Some(mut base_rate) = base_rate.filter(|value| *value > 0) else {
+        return None;
+    };
+
+    if !rates.configured || rates.item_ratio_overrides || (item_type.is_empty() && !is_mvp_reward) {
+        return None;
+    }
+    if rates.drop_rate_increase && !is_mvp_reward && base_rate < 5_000 {
+        base_rate += 1;
+    }
+
+    let (rate_adjust, bounds) = drop_rate_parameters(
+        rates,
+        item_drop_category(item_type),
+        monster_kind,
+        is_mvp_reward,
+    );
+    let adjusted = adjusted_drop_rate(base_rate, rate_adjust, bounds, rates.logarithmic_drops);
+
+    Some(adjusted as f64 / 100.0)
+}
+
+fn apply_exp_rate(base_exp: i64, rate: u32) -> i64 {
+    ((base_exp.max(0) as i128 * rate as i128) / 100).min(i64::MAX as i128) as i64
+}
+
+fn format_number_fr(value: i64) -> String {
+    let raw = value.to_string();
+    let mut formatted = String::with_capacity(raw.len() + raw.len() / 3);
+
+    for (index, character) in raw.chars().rev().enumerate() {
+        if index > 0 && index % 3 == 0 {
+            formatted.push(' ');
+        }
+        formatted.push(character);
+    }
+
+    formatted.chars().rev().collect()
 }
 
 fn is_sensitive_column(column_name: &str) -> bool {
@@ -2659,6 +2802,7 @@ impl RAthenaFrDatabase {
         &self,
         query: &str,
         _preferred_table: &str,
+        rates: &ServerRatesConfig,
     ) -> Result<Option<Vec<String>>> {
         let Some(monster) = self.search_monsters(query, 1).await?.into_iter().next() else {
             return Ok(None);
@@ -2710,6 +2854,9 @@ impl RAthenaFrDatabase {
                 {},
                 {},
                 {},
+                {},
+                {},
+                {},
                 {}
             FROM {}
             WHERE {} = ?
@@ -2723,6 +2870,9 @@ impl RAthenaFrDatabase {
             optional_char_select(&columns, MOB_RACE_COLUMNS, "race"),
             optional_char_select(&columns, MOB_ELEMENT_COLUMNS, "element"),
             optional_char_select(&columns, MOB_SIZE_COLUMNS, "mob_size"),
+            optional_signed_select(&columns, &["base_exp", "BaseExp"], "base_exp"),
+            optional_signed_select(&columns, &["job_exp", "JobExp"], "job_exp"),
+            optional_signed_select(&columns, MOB_MVP_EXP_COLUMNS, "mvp_exp"),
             optional_signed_select(&columns, &["str", "STR"], "str_stat"),
             optional_signed_select(&columns, &["agi", "AGI"], "agi_stat"),
             optional_signed_select(&columns, &["vit", "VIT"], "vit_stat"),
@@ -2771,6 +2921,36 @@ impl RAthenaFrDatabase {
             }
         }
 
+        let exp_values = [
+            (
+                "EXP base serveur",
+                row.try_get::<Option<i64>, _>("base_exp")?,
+                rates.base_exp_rate,
+            ),
+            (
+                "EXP job serveur",
+                row.try_get::<Option<i64>, _>("job_exp")?,
+                rates.job_exp_rate,
+            ),
+            (
+                "EXP MVP serveur",
+                row.try_get::<Option<i64>, _>("mvp_exp")?,
+                rates.mvp_exp_rate,
+            ),
+        ];
+        if rates.configured {
+            for (label, value, rate) in exp_values {
+                if let Some(value) = value.filter(|value| *value > 0) {
+                    lines.push(format!(
+                        "{label}: `{}`",
+                        format_number_fr(apply_exp_rate(value, rate))
+                    ));
+                }
+            }
+        } else if exp_values.iter().any(|(_, value, _)| value.is_some()) {
+            lines.push("EXP serveur non affichée : rates non configurés dans le bot.".to_string());
+        }
+
         for (label, alias) in [
             ("Race", "race"),
             ("Element", "element"),
@@ -2786,32 +2966,36 @@ impl RAthenaFrDatabase {
         Ok(Some(lines))
     }
 
-    pub async fn mob_drop_lines(
+    pub async fn mob_drops(
         &self,
         query: &str,
         _preferred_table: &str,
-        limit: u32,
-    ) -> Result<Option<Vec<String>>> {
+        rates: &ServerRatesConfig,
+    ) -> Result<Option<MonsterDrops>> {
         let Some(monster) = self.search_monsters(query, 1).await?.into_iter().next() else {
             return Ok(None);
         };
         let table_name = monster.source_table.as_str();
         let Some(search_columns) = self.monster_search_columns(table_name).await? else {
-            return Ok(Some(vec![format!(
-                "Aucune colonne de drop lisible dans `{table_name}`."
-            )]));
+            return Ok(Some(MonsterDrops {
+                monster_id: monster.monster_id,
+                monster_name: monster.display_name,
+                drops: Vec::new(),
+            }));
         };
         let Some(columns) = self.table_columns(table_name).await? else {
             return Ok(None);
         };
         let pairs = drop_column_pairs(&columns);
         if pairs.is_empty() {
-            return Ok(Some(vec![format!(
-                "Aucune colonne de drop détectée dans `{table_name}`."
-            )]));
+            return Ok(Some(MonsterDrops {
+                monster_id: monster.monster_id,
+                monster_name: monster.display_name,
+                drops: Vec::new(),
+            }));
         }
 
-        let select_columns = pairs
+        let drop_select_columns = pairs
             .iter()
             .flat_map(|(id_column, rate_column, label)| {
                 let safe_label = label.replace(' ', "_").to_ascii_lowercase();
@@ -2832,6 +3016,13 @@ impl RAthenaFrDatabase {
             })
             .collect::<Vec<_>>()
             .join(", ");
+        let select_columns = format!(
+            "{}, {}, {}, {}",
+            optional_signed_select(&columns, &["mode_mvp", "ModeMvp"], "mode_mvp"),
+            optional_char_select(&columns, &["class", "Class"], "monster_class"),
+            optional_signed_select(&columns, MOB_MVP_EXP_COLUMNS, "mvp_exp"),
+            drop_select_columns
+        );
         let sql = format!(
             "SELECT {select_columns} FROM {} WHERE {} = ? LIMIT 1",
             quote_identifier(table_name),
@@ -2847,14 +3038,14 @@ impl RAthenaFrDatabase {
             return Ok(None);
         };
 
-        let mut lines = vec![format!(
-            "Drops de `{}` (`{}`):",
-            monster.display_name, monster.monster_id
-        )];
+        let mut drops = Vec::new();
+        let monster_kind = monster_rate_kind(
+            row.try_get("mode_mvp")?,
+            row.try_get::<Option<String>, _>("monster_class")?
+                .as_deref(),
+            row.try_get("mvp_exp")?,
+        );
         for (_id_column, _rate_column, label) in pairs.iter() {
-            if lines.len() > limit as usize {
-                break;
-            }
             let alias = label.replace(' ', "_").to_ascii_lowercase();
             let item_reference: Option<String> = row.try_get(format!("{alias}_item").as_str())?;
             let rate: Option<i64> = row.try_get(format!("{alias}_rate").as_str())?;
@@ -2864,32 +3055,36 @@ impl RAthenaFrDatabase {
             else {
                 continue;
             };
-            let item_label = self
+            let item = self
                 .search_items(&item_reference, 1)
                 .await?
                 .into_iter()
-                .next()
-                .map(|item| {
-                    format!(
-                        "{} (`{}`, `{}`)",
-                        item.display_name, item.item_id, item.aegis_name
-                    )
-                })
-                .unwrap_or_else(|| format!("`{item_reference}`"));
+                .next();
+            let item_type = item
+                .as_ref()
+                .map(|item| item.item_type.as_str())
+                .unwrap_or("");
+            let is_mvp_reward = label.starts_with("MVP drop");
 
-            if !item_label.is_empty() {
-                lines.push(format!(
-                    "{label}: {item_label} - {}",
-                    format_drop_rate(rate)
-                ));
-            }
+            drops.push(MonsterDropEntry {
+                item_id: item
+                    .as_ref()
+                    .map(|entry| entry.item_id)
+                    .or_else(|| item_reference.parse().ok()),
+                item_name: item
+                    .as_ref()
+                    .map(|entry| entry.display_name.clone())
+                    .unwrap_or_else(|| "Non disponible".to_string()),
+                aegis_name: item.as_ref().map(|entry| entry.aegis_name.clone()),
+                server_rate: server_drop_rate(rate, item_type, monster_kind, is_mvp_reward, rates),
+            });
         }
 
-        if lines.len() == 1 {
-            lines.push("Aucun drop renseigné.".to_string());
-        }
-
-        Ok(Some(lines))
+        Ok(Some(MonsterDrops {
+            monster_id: monster.monster_id,
+            monster_name: monster.display_name,
+            drops,
+        }))
     }
 
     pub async fn who_drops_lines(
@@ -3980,6 +4175,73 @@ mod tests {
 
         assert!(condition.contains("BINARY CAST(`drop1_item` AS CHAR) = BINARY ?"));
         assert!(condition.contains("CAST(`drop1_item` AS SIGNED) = ?"));
+    }
+
+    fn configured_server_rates() -> ServerRatesConfig {
+        let mut rates = ServerRatesConfig {
+            configured: true,
+            base_exp_rate: 1500,
+            job_exp_rate: 1500,
+            mvp_exp_rate: 1000,
+            ..ServerRatesConfig::default()
+        };
+        rates.item_rate_common.normal = 500;
+        rates.item_rate_common.boss = 300;
+        rates.item_rate_equip.normal = 400;
+        rates.item_rate_equip.boss = 200;
+        rates.item_rate_card.normal = 300;
+        rates.item_rate_mvp = 200;
+        rates
+    }
+
+    #[test]
+    fn drop_rates_apply_server_category_and_caps() {
+        let rates = configured_server_rates();
+
+        assert_eq!(
+            server_drop_rate(Some(7_000), "Etc", MonsterRateKind::Normal, false, &rates,),
+            Some(100.0)
+        );
+        assert_eq!(
+            server_drop_rate(Some(400), "Weapon", MonsterRateKind::Boss, false, &rates,),
+            Some(8.0)
+        );
+        assert_eq!(
+            server_drop_rate(Some(6_000), "Etc", MonsterRateKind::Mvp, true, &rates,),
+            Some(100.0)
+        );
+    }
+
+    #[test]
+    fn drop_rates_do_not_expose_raw_sql_when_not_configured() {
+        let value = server_drop_rate(
+            Some(7_000),
+            "Etc",
+            MonsterRateKind::Normal,
+            false,
+            &ServerRatesConfig::default(),
+        );
+
+        assert_eq!(value, None);
+    }
+
+    #[test]
+    fn drop_rates_are_hidden_when_item_category_is_unknown() {
+        let value = server_drop_rate(
+            Some(500),
+            "",
+            MonsterRateKind::Normal,
+            false,
+            &configured_server_rates(),
+        );
+
+        assert_eq!(value, None);
+    }
+
+    #[test]
+    fn exp_rates_match_rathena_percentage_scale() {
+        assert_eq!(apply_exp_rate(100, 1500), 1_500);
+        assert_eq!(apply_exp_rate(214_272, 1000), 2_142_720);
     }
 
     #[test]

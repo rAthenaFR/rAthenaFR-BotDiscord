@@ -9,6 +9,7 @@ pub struct AppConfig {
     pub services: ServicesConfig,
     pub display: DisplayConfig,
     pub cache: CacheConfig,
+    pub server_rates: ServerRatesConfig,
     pub account_commands: AccountCommandsConfig,
     pub commands: CommandConfig,
     pub game_bridge: GameBridgeConfig,
@@ -66,6 +67,78 @@ pub struct DisplayConfig {
 pub struct CacheConfig {
     pub enabled: bool,
     pub ttl_seconds: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct DropRateSet {
+    pub normal: u32,
+    pub boss: u32,
+    pub mvp: u32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct DropRateBounds {
+    pub min: u32,
+    pub max: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct ServerRatesConfig {
+    pub configured: bool,
+    pub base_exp_rate: u32,
+    pub job_exp_rate: u32,
+    pub mvp_exp_rate: u32,
+    pub item_rate_common: DropRateSet,
+    pub item_rate_heal: DropRateSet,
+    pub item_rate_use: DropRateSet,
+    pub item_rate_equip: DropRateSet,
+    pub item_rate_card: DropRateSet,
+    pub item_rate_mvp: u32,
+    pub item_drop_common: DropRateBounds,
+    pub item_drop_heal: DropRateBounds,
+    pub item_drop_use: DropRateBounds,
+    pub item_drop_equip: DropRateBounds,
+    pub item_drop_card: DropRateBounds,
+    pub item_drop_mvp: DropRateBounds,
+    pub logarithmic_drops: bool,
+    pub drop_rate_increase: bool,
+    pub item_ratio_overrides: bool,
+}
+
+impl Default for ServerRatesConfig {
+    fn default() -> Self {
+        let standard = DropRateSet {
+            normal: 100,
+            boss: 100,
+            mvp: 100,
+        };
+        let bounds = DropRateBounds {
+            min: 1,
+            max: 10_000,
+        };
+
+        Self {
+            configured: false,
+            base_exp_rate: 100,
+            job_exp_rate: 100,
+            mvp_exp_rate: 100,
+            item_rate_common: standard,
+            item_rate_heal: standard,
+            item_rate_use: standard,
+            item_rate_equip: standard,
+            item_rate_card: standard,
+            item_rate_mvp: 100,
+            item_drop_common: bounds,
+            item_drop_heal: bounds,
+            item_drop_use: bounds,
+            item_drop_equip: bounds,
+            item_drop_card: bounds,
+            item_drop_mvp: bounds,
+            logarithmic_drops: false,
+            drop_rate_increase: false,
+            item_ratio_overrides: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -143,6 +216,7 @@ impl AppConfig {
             services: ServicesConfig::from_env()?,
             display: DisplayConfig::from_env()?,
             cache: CacheConfig::from_env()?,
+            server_rates: ServerRatesConfig::from_env()?,
             account_commands: AccountCommandsConfig::from_env()?,
             commands: CommandConfig::from_env()?,
             game_bridge: GameBridgeConfig::from_env()?,
@@ -156,6 +230,7 @@ impl AppConfig {
             services: ServicesConfig::from_env()?,
             display: DisplayConfig::from_env()?,
             cache: CacheConfig::from_env()?,
+            server_rates: ServerRatesConfig::from_env()?,
             account_commands: AccountCommandsConfig::from_env()?,
             commands: CommandConfig::from_env()?,
             game_bridge: GameBridgeConfig::from_env()?,
@@ -338,6 +413,87 @@ impl CacheConfig {
             Some(Duration::from_secs(seconds))
         }
     }
+}
+
+impl ServerRatesConfig {
+    fn from_env() -> Result<Self> {
+        Self::from_lookup(&optional)
+    }
+
+    fn from_lookup<F>(lookup: &F) -> Result<Self>
+    where
+        F: Fn(&str) -> Option<String>,
+    {
+        Ok(Self {
+            configured: parse_bool_optional_from(lookup, "RATHENAFR_BATTLE_RATES_CONFIGURED")?
+                .unwrap_or(false),
+            base_exp_rate: battle_rate(lookup, "BASE_EXP_RATE", 100)?,
+            job_exp_rate: battle_rate(lookup, "JOB_EXP_RATE", 100)?,
+            mvp_exp_rate: battle_rate(lookup, "MVP_EXP_RATE", 100)?,
+            item_rate_common: drop_rate_set(lookup, "COMMON")?,
+            item_rate_heal: drop_rate_set(lookup, "HEAL")?,
+            item_rate_use: drop_rate_set(lookup, "USE")?,
+            item_rate_equip: drop_rate_set(lookup, "EQUIP")?,
+            item_rate_card: drop_rate_set(lookup, "CARD")?,
+            item_rate_mvp: battle_rate(lookup, "ITEM_RATE_MVP", 100)?,
+            item_drop_common: drop_rate_bounds(lookup, "COMMON")?,
+            item_drop_heal: drop_rate_bounds(lookup, "HEAL")?,
+            item_drop_use: drop_rate_bounds(lookup, "USE")?,
+            item_drop_equip: drop_rate_bounds(lookup, "EQUIP")?,
+            item_drop_card: drop_rate_bounds(lookup, "CARD")?,
+            item_drop_mvp: drop_rate_bounds(lookup, "MVP")?,
+            logarithmic_drops: parse_bool_optional_from(
+                lookup,
+                "RATHENAFR_BATTLE_ITEM_LOGARITHMIC_DROPS",
+            )?
+            .unwrap_or(false),
+            drop_rate_increase: parse_bool_optional_from(
+                lookup,
+                "RATHENAFR_BATTLE_DROP_RATE_INCREASE",
+            )?
+            .unwrap_or(false),
+            item_ratio_overrides: parse_bool_optional_from(
+                lookup,
+                "RATHENAFR_BATTLE_ITEM_RATIO_OVERRIDES",
+            )?
+            .unwrap_or(false),
+        })
+    }
+}
+
+fn battle_rate<F>(lookup: &F, suffix: &str, default: u32) -> Result<u32>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    parse_optional_from(lookup, &format!("RATHENAFR_BATTLE_{suffix}"))
+        .map(|value| value.unwrap_or(default))
+}
+
+fn drop_rate_set<F>(lookup: &F, category: &str) -> Result<DropRateSet>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    Ok(DropRateSet {
+        normal: battle_rate(lookup, &format!("ITEM_RATE_{category}"), 100)?,
+        boss: battle_rate(lookup, &format!("ITEM_RATE_{category}_BOSS"), 100)?,
+        mvp: battle_rate(lookup, &format!("ITEM_RATE_{category}_MVP"), 100)?,
+    })
+}
+
+fn drop_rate_bounds<F>(lookup: &F, category: &str) -> Result<DropRateBounds>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    let min = battle_rate(lookup, &format!("ITEM_DROP_{category}_MIN"), 1)?;
+    let max = battle_rate(lookup, &format!("ITEM_DROP_{category}_MAX"), 10_000)?;
+
+    if min > max || max > 10_000 {
+        return Err(anyhow!(
+            "Limites de drop invalides pour {category} : min={min}, max={max}."
+        ));
+    }
+
+    Ok(DropRateBounds { min, max })
 }
 
 impl AccountCommandsConfig {
@@ -779,6 +935,49 @@ mod tests {
             .expect("cache config");
 
         assert_eq!(config.duration(10), None);
+    }
+
+    #[test]
+    fn server_rates_are_disabled_and_standard_by_default() {
+        let config = ServerRatesConfig::from_lookup(&lookup(&[])).expect("rates config");
+
+        assert!(!config.configured);
+        assert_eq!(config.base_exp_rate, 100);
+        assert_eq!(config.item_rate_common.normal, 100);
+        assert_eq!(config.item_rate_common.boss, 100);
+        assert_eq!(config.item_rate_common.mvp, 100);
+        assert_eq!(config.item_drop_common.min, 1);
+        assert_eq!(config.item_drop_common.max, 10_000);
+    }
+
+    #[test]
+    fn server_rates_read_rathena_overrides() {
+        let config = ServerRatesConfig::from_lookup(&lookup(&[
+            ("RATHENAFR_BATTLE_RATES_CONFIGURED", "true"),
+            ("RATHENAFR_BATTLE_BASE_EXP_RATE", "1500"),
+            ("RATHENAFR_BATTLE_ITEM_RATE_COMMON", "500"),
+            ("RATHENAFR_BATTLE_ITEM_RATE_COMMON_BOSS", "300"),
+            ("RATHENAFR_BATTLE_ITEM_RATE_COMMON_MVP", "100"),
+            ("RATHENAFR_BATTLE_ITEM_DROP_COMMON_MAX", "7500"),
+        ]))
+        .expect("rates config");
+
+        assert!(config.configured);
+        assert_eq!(config.base_exp_rate, 1500);
+        assert_eq!(config.item_rate_common.normal, 500);
+        assert_eq!(config.item_rate_common.boss, 300);
+        assert_eq!(config.item_rate_common.mvp, 100);
+        assert_eq!(config.item_drop_common.max, 7500);
+    }
+
+    #[test]
+    fn server_rates_reject_invalid_drop_bounds() {
+        let result = ServerRatesConfig::from_lookup(&lookup(&[
+            ("RATHENAFR_BATTLE_ITEM_DROP_CARD_MIN", "500"),
+            ("RATHENAFR_BATTLE_ITEM_DROP_CARD_MAX", "100"),
+        ]));
+
+        assert!(result.is_err());
     }
 
     #[test]

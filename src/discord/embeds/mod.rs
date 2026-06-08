@@ -856,6 +856,51 @@ pub fn text_embed(title: &str, description: impl Into<String>) -> CreateEmbed {
     info_embed(title, description)
 }
 
+pub fn mob_drops_embed(result: &MonsterDrops) -> CreateEmbed {
+    if result.drops.is_empty() {
+        return warning_embed(
+            "Aucun drop trouvé",
+            "Aucun drop connu n’a été trouvé pour ce monstre.",
+        );
+    }
+
+    let display_limit = 10;
+    let mut description = format!(
+        "{}\nID : {}",
+        sanitize_embed_mentions(&result.monster_name),
+        result.monster_id
+    );
+    if result.drops.len() > display_limit {
+        description.push_str("\n\nAffichage limité aux 10 premiers drops.");
+    }
+
+    let mut embed = CreateEmbed::new()
+        .title("Drops monstre")
+        .description(truncate_embed_field(&description, 4096))
+        .color(COLOR_INFO)
+        .footer(serenity::all::CreateEmbedFooter::new(
+            "Taux avant pénalité Renewal, bonus VIP, LUK, équipement et autres bonus joueur.",
+        ))
+        .timestamp(Timestamp::now());
+
+    for drop in result.drops.iter().take(display_limit) {
+        embed = embed.field(
+            truncate_embed_field(&sanitize_embed_mentions(&drop.item_name), 256),
+            truncate_embed_field(&mob_drop_field_value(drop), EMBED_FIELD_VALUE_LIMIT),
+            false,
+        );
+    }
+
+    embed
+}
+
+pub fn monster_not_found_embed() -> CreateEmbed {
+    warning_embed(
+        "Monstre introuvable",
+        "Aucun monstre ne correspond à cette recherche.",
+    )
+}
+
 pub fn mvp_list_panel_embed(lines: &[String], page: usize, page_size: usize) -> CreateEmbed {
     let page_size = page_size.max(1);
     let total_count = lines.len();
@@ -1122,6 +1167,31 @@ fn truncate_embed_field(value: &str, limit: usize) -> String {
     output
 }
 
+fn mob_drop_field_value(drop: &MonsterDropEntry) -> String {
+    format!(
+        "ID : {}\nAegisName : {}\nTaux serveur : {}",
+        drop.item_id
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "Non disponible".to_string()),
+        drop.aegis_name
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .map(sanitize_embed_mentions)
+            .unwrap_or_else(|| "Non disponible".to_string()),
+        drop.server_rate
+            .map(format_drop_rate)
+            .unwrap_or_else(|| "Non disponible".to_string()),
+    )
+}
+
+fn format_drop_rate(rate: f64) -> String {
+    if rate >= 100.0 {
+        "100%".to_string()
+    } else {
+        format!("{rate:.2}%")
+    }
+}
+
 fn account_state(value: i64) -> String {
     match value {
         0 => "`0` Actif".to_string(),
@@ -1223,7 +1293,7 @@ fn mvp_kill_field_value(entry: &MvpKillEntry) -> String {
         format!("Joueur : {}", sanitize_embed_mentions(&killer_name)),
         format!("Carte : `{}`", sanitize_embed_mentions(&entry.map)),
         format!("Date : {date}"),
-        format!("EXP MVP : {mvp_exp}"),
+        format!("EXP MVP attribuée : {mvp_exp}"),
         format!("Récompense : {}", sanitize_embed_mentions(&prize_name)),
     ];
 
@@ -1477,6 +1547,38 @@ mod tests {
     }
 
     #[test]
+    fn drop_rates_use_discord_friendly_percentages() {
+        assert_eq!(format_drop_rate(100.0), "100%");
+        assert_eq!(format_drop_rate(7.5), "7.50%");
+        assert_eq!(format_drop_rate(0.03), "0.03%");
+    }
+
+    #[test]
+    fn mob_drop_field_uses_french_labels_and_fallbacks() {
+        let complete = MonsterDropEntry {
+            item_id: Some(999),
+            item_name: "Steel".to_string(),
+            aegis_name: Some("Steel".to_string()),
+            server_rate: Some(7.5),
+        };
+        let unavailable = MonsterDropEntry {
+            item_id: None,
+            item_name: "Non disponible".to_string(),
+            aegis_name: None,
+            server_rate: None,
+        };
+
+        assert_eq!(
+            mob_drop_field_value(&complete),
+            "ID : 999\nAegisName : Steel\nTaux serveur : 7.50%"
+        );
+        assert_eq!(
+            mob_drop_field_value(&unavailable),
+            "ID : Non disponible\nAegisName : Non disponible\nTaux serveur : Non disponible"
+        );
+    }
+
+    #[test]
     fn mvp_kill_field_uses_discord_timestamps_and_french_fallbacks() {
         let entry = MvpKillEntry {
             mvp_date: Some("2026-06-03 16:25:02".to_string()),
@@ -1498,7 +1600,7 @@ mod tests {
         assert!(value.contains("Joueur : GhostPunishR"));
         assert!(value.contains("Carte : `gl_chyard`"));
         assert!(value.contains("Date : <t:1717424702:F> (<t:1717424702:R>)"));
-        assert!(value.contains("EXP MVP : 2 142 720"));
+        assert!(value.contains("EXP MVP attribuée : 2 142 720"));
         assert!(value.contains("Récompense : Yggdrasil Berry"));
     }
 
@@ -1522,7 +1624,7 @@ mod tests {
         let value = mvp_kill_field_value(&entry);
 
         assert!(value.contains("Date : Non disponible"));
-        assert!(value.contains("EXP MVP : Non disponible"));
+        assert!(value.contains("EXP MVP attribuée : Non disponible"));
         assert!(value.contains("Récompense : Item #0"));
     }
 

@@ -19,6 +19,8 @@
 - `/mvp list` combine désormais la vue `rathenafr_mvp_regular_spawn` avec `mvplog` et affiche les états d’attente, de fenêtre ouverte ou de disponibilité probable.
 - `/mvp last` résout désormais les noms des MVP et des récompenses depuis les tables de recherche rAthenaFR.
 - `/mob info`, `/mob drops` et `/who-drops` prennent désormais en charge les tables Renewal et les références d’objets par AegisName.
+- `/mob info` et `/mob drops` appliquent désormais les rates EXP/drop configurés du map-server et distinguent les valeurs serveur des modificateurs propres au joueur.
+- `/mob drops` utilise désormais un embed structuré limité à 10 objets, avec noms, identifiants, AegisName et taux serveur lisibles sur mobile.
 - `/db health` signale désormais aussi la présence de `rathenafr_item_search` dans les tables optionnelles.
 - Mise à jour de `sql/create-account-management-user.sql` avec le droit `UPDATE` sur `login` requis par `/staff account-manage`.
 - Alignement de `.env.example`, `.env.docker.example` et `docs/CONFIGURATION_FR.md` avec les variables réellement lues par le bot.
@@ -31,6 +33,7 @@
 - Correction de la jointure carte de `/mvp list` lorsque `mvplog` et la vue MVP utilisent des collations différentes.
 - Correction des doublons possibles de `/mvp last` lorsqu’un même MVP possède plusieurs cartes.
 - Correction de la détection des colonnes `dropN_item` et `mvpdropN_item` des schémas rAthena Renewal.
+- Les taux SQL bruts ne sont plus présentés comme taux de drop effectifs lorsque les rates serveur ne sont pas configurés dans le bot.
 - Correction de `/item info`, qui lit désormais `rathenafr_item_search` et accepte ID, nom d’objet ou AegisName.
 - Correction des `custom_id` des boutons de pagination MVP pour éviter les doublons refusés par Discord.
 - Retrait des variables d’exemple non utilisées liées aux assets et aux anciennes options de tables optionnelles.
