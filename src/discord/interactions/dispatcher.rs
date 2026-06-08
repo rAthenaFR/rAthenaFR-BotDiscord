@@ -28,6 +28,8 @@ const CASTLES_CACHE_TTL_SECONDS: u64 = 60;
 const MARKET_CACHE_TTL_SECONDS: u64 = 20;
 const MVP_LIST_COMPONENT_PREFIX: &str = "mvp_list:";
 const MVP_LIST_FETCH_LIMIT: u32 = 500;
+const MVP_LIST_PAGE_SIZE_LIMIT: usize = 10;
+const MVP_LAST_DISPLAY_LIMIT: u32 = 10;
 
 #[cfg(test)]
 const CACHED_COMMAND_NAMES: &[&str] =
@@ -611,13 +613,19 @@ impl Handler {
                     .await
             }
             "last" => {
-                let lines = self
+                let display_limit = display_limit.min(MVP_LAST_DISPLAY_LIMIT);
+                let entries = self
                     .state
                     .database
-                    .mvp_last_lines(&self.state.config.commands.mob_table_name, query_limit)
+                    .mvp_last_entries(display_limit.saturating_add(1))
                     .await?;
-                self.respond_lines(context, command, "Derniers MVP", lines, false)
-                    .await
+                self.respond_embed(
+                    context,
+                    command,
+                    embeds::mvp_last_embed(&entries, display_limit),
+                    false,
+                )
+                .await
             }
             "top" => {
                 let lines = self
@@ -2417,7 +2425,7 @@ impl Handler {
             return Ok(());
         };
 
-        let max_page_size = (self.state.config.display.max_limit as usize).max(1);
+        let max_page_size = mvp_list_max_page_size(self.state.config.display.max_limit);
         let page_size = page_request.page_size.clamp(1, max_page_size);
         let lines = self
             .state
@@ -2440,7 +2448,7 @@ impl Handler {
         page: usize,
         page_size: usize,
     ) -> Result<()> {
-        let max_page_size = (self.state.config.display.max_limit as usize).max(1);
+        let max_page_size = mvp_list_max_page_size(self.state.config.display.max_limit);
         let page_size = page_size.clamp(1, max_page_size);
         let page = clamp_mvp_list_page(page, lines.len(), page_size);
         let components = mvp_list_components(page, page_size, lines.len());
@@ -2467,7 +2475,7 @@ impl Handler {
         page: usize,
         page_size: usize,
     ) -> Result<()> {
-        let max_page_size = (self.state.config.display.max_limit as usize).max(1);
+        let max_page_size = mvp_list_max_page_size(self.state.config.display.max_limit);
         let page_size = page_size.clamp(1, max_page_size);
         let page = clamp_mvp_list_page(page, lines.len(), page_size);
         let components = mvp_list_components(page, page_size, lines.len());
@@ -2728,6 +2736,10 @@ fn mvp_list_component_id(action: &str, page: usize, page_size: usize) -> String 
 
 fn mvp_list_page_count(total_count: usize, page_size: usize) -> usize {
     total_count.div_ceil(page_size.max(1)).max(1)
+}
+
+fn mvp_list_max_page_size(configured_max: u32) -> usize {
+    (configured_max as usize).clamp(1, MVP_LIST_PAGE_SIZE_LIMIT)
 }
 
 fn clamp_mvp_list_page(page: usize, total_count: usize, page_size: usize) -> usize {
@@ -3281,6 +3293,8 @@ mod tests {
         assert_eq!(mvp_list_page_count(61, 10), 7);
         assert_eq!(clamp_mvp_list_page(99, 61, 10), 6);
         assert_eq!(clamp_mvp_list_page(0, 0, 10), 0);
+        assert_eq!(mvp_list_max_page_size(25), 10);
+        assert_eq!(mvp_list_max_page_size(5), 5);
     }
 
     fn test_account_commands_config(

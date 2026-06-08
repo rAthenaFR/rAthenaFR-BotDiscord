@@ -5,15 +5,20 @@
 ### Ajouté
 
 - Ajout d’un panneau paginé pour `/mvp list` avec boutons `Début`, `Précédent`, `Suivant` et `Fin`.
+- Ajout de timers Discord dynamiques à `/mvp list`, calculés depuis le dernier kill SQL par MVP et par carte.
+- Ajout d’un embed détaillé à `/mvp last` avec joueur, carte, date Discord, EXP MVP et récompense.
 - Ajout du script `sql/rathenafr_mvp_regular_spawn.sql` pour créer `rathenafr_mvp_list` et la vue `rathenafr_mvp_regular_spawn`.
 - Ajout du script `sql/rathenafr_item_search.sql` pour créer et rafraîchir la source SQL utilisée par `/item info`.
+- Ajout du script `sql/sql_updates.sql` pour les installations rAthena qui ne fournissent plus cette table.
 - Ajout du script `sql/create-gmmsg-queue-user.sql` pour les droits SQL du mode `/gmmsg` `sql_queue`.
 - Ajout des variables d’exemple `RATHENAFR_ACCOUNT_MANAGE_ENABLED`, `RATHENAFR_ACCOUNT_DELETE_ENABLED`, `RATHENAFR_ACCOUNT_MANAGE_MIN_ROLE` et `RATHENAFR_ACCOUNT_DELETE_MIN_ROLE`.
 - Ajout des scripts Windows `ci`, `docker-build`, `docker-up`, `docker-deploy`, `docker-logs`, `docker-down` et de la documentation `scripts/README_FR.md`.
 
 ### Modifié
 
-- `/mvp list` lit désormais directement la vue SQL `rathenafr_mvp_regular_spawn`.
+- `/mvp list` combine désormais la vue `rathenafr_mvp_regular_spawn` avec `mvplog` et affiche les états d’attente, de fenêtre ouverte ou de disponibilité probable.
+- `/mvp last` résout désormais les noms des MVP et des récompenses depuis les tables de recherche rAthenaFR.
+- `/mob info`, `/mob drops` et `/who-drops` prennent désormais en charge les tables Renewal et les références d’objets par AegisName.
 - `/db health` signale désormais aussi la présence de `rathenafr_item_search` dans les tables optionnelles.
 - Mise à jour de `sql/create-account-management-user.sql` avec le droit `UPDATE` sur `login` requis par `/staff account-manage`.
 - Alignement de `.env.example`, `.env.docker.example` et `docs/CONFIGURATION_FR.md` avec les variables réellement lues par le bot.
@@ -23,6 +28,9 @@
 ### Corrigé
 
 - Correction de l’affichage incomplet de `/mvp list` en récupérant tous les MVP réguliers disponibles dans la vue SQL.
+- Correction de la jointure carte de `/mvp list` lorsque `mvplog` et la vue MVP utilisent des collations différentes.
+- Correction des doublons possibles de `/mvp last` lorsqu’un même MVP possède plusieurs cartes.
+- Correction de la détection des colonnes `dropN_item` et `mvpdropN_item` des schémas rAthena Renewal.
 - Correction de `/item info`, qui lit désormais `rathenafr_item_search` et accepte ID, nom d’objet ou AegisName.
 - Correction des `custom_id` des boutons de pagination MVP pour éviter les doublons refusés par Discord.
 - Retrait des variables d’exemple non utilisées liées aux assets et aux anciennes options de tables optionnelles.

@@ -867,7 +867,14 @@ pub fn mvp_list_panel_embed(lines: &[String], page: usize, page_size: usize) -> 
     let description = if total_count == 0 {
         "Aucun MVP avec spawn régulier n’a été trouvé.".to_string()
     } else {
-        lines[start..end].join("\n")
+        let mut description = lines[start..end].join("\n\n");
+        if page == 0 && total_count > page_size {
+            description.push_str(&format!(
+                "\n\nAffichage limité aux {} premiers MVP.",
+                end - start
+            ));
+        }
+        description
     };
 
     CreateEmbed::new()
@@ -875,13 +882,49 @@ pub fn mvp_list_panel_embed(lines: &[String], page: usize, page_size: usize) -> 
         .description(brand_text(truncate_embed_field(&description, 3900)))
         .color(COLOR_PURPLE)
         .footer(serenity::all::CreateEmbedFooter::new(format!(
-            "{} - Page {}/{} - {} MVP régulier(s)",
-            footer_text(),
+            "Timers basés sur les logs MVP SQL rAthenaFR - Page {}/{} - {} MVP régulier(s)",
             page + 1,
             total_pages,
             total_count
         )))
         .timestamp(Timestamp::now())
+}
+
+pub fn mvp_last_embed(entries: &[MvpKillEntry], requested_limit: u32) -> CreateEmbed {
+    if entries.is_empty() {
+        return warning_embed(
+            "Aucun MVP enregistré",
+            "Aucun kill MVP n’a encore été enregistré dans les logs SQL.",
+        );
+    }
+
+    let display_limit = (requested_limit as usize).clamp(1, 10);
+    let displayed_entries = entries.iter().take(display_limit);
+    let has_more_entries = entries.len() > display_limit;
+    let mut embed = CreateEmbed::new()
+        .title("Derniers MVP tués")
+        .color(COLOR_PURPLE)
+        .footer(serenity::all::CreateEmbedFooter::new(
+            "Timers et logs basés sur les logs SQL rAthenaFR",
+        ))
+        .timestamp(Timestamp::now());
+
+    if has_more_entries {
+        embed = embed.description(format!(
+            "Affichage limité aux {} derniers MVP.",
+            display_limit
+        ));
+    }
+
+    for entry in displayed_entries {
+        embed = embed.field(
+            truncate_embed_field(&mvp_kill_field_name(entry), 256),
+            truncate_embed_field(&mvp_kill_field_value(entry), EMBED_FIELD_VALUE_LIMIT),
+            false,
+        );
+    }
+
+    embed
 }
 
 pub fn success_message_embed(title: &str, description: impl Into<String>) -> CreateEmbed {
@@ -1141,6 +1184,91 @@ fn item_line(item: &CharacterItemEntry) -> String {
     )
 }
 
+fn mvp_kill_field_name(entry: &MvpKillEntry) -> String {
+    let name = if entry.monster_name.trim().is_empty() {
+        format!("MVP #{}", entry.monster_id)
+    } else {
+        entry.monster_name.clone()
+    };
+
+    sanitize_embed_mentions(&name)
+}
+
+fn mvp_kill_field_value(entry: &MvpKillEntry) -> String {
+    let date = match entry.mvp_timestamp.filter(|timestamp| *timestamp > 0) {
+        Some(timestamp) => format!("<t:{timestamp}:F> (<t:{timestamp}:R>)"),
+        None => entry
+            .mvp_date
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or("Non disponible")
+            .to_string(),
+    };
+    let mvp_exp = entry
+        .mvp_exp
+        .filter(|value| *value > 0)
+        .map(format_number_fr)
+        .unwrap_or_else(|| "Non disponible".to_string());
+    let killer_name = if entry.killer_name.trim().is_empty() {
+        format!("Personnage #{}", entry.killer_id)
+    } else {
+        entry.killer_name.clone()
+    };
+    let prize_name = if entry.prize_name.trim().is_empty() {
+        format!("Item #{}", entry.prize_id)
+    } else {
+        entry.prize_name.clone()
+    };
+    let mut lines = vec![
+        format!("Joueur : {}", sanitize_embed_mentions(&killer_name)),
+        format!("Carte : `{}`", sanitize_embed_mentions(&entry.map)),
+        format!("Date : {date}"),
+        format!("EXP MVP : {mvp_exp}"),
+        format!("Récompense : {}", sanitize_embed_mentions(&prize_name)),
+    ];
+
+    if let Some(aegis_name) = entry
+        .monster_aegis_name
+        .as_deref()
+        .filter(|value| !value.eq_ignore_ascii_case(&entry.monster_name))
+    {
+        lines.push(format!(
+            "Nom technique : `{}`",
+            sanitize_embed_mentions(aegis_name)
+        ));
+    }
+    if let Some(aegis_name) = entry
+        .prize_aegis_name
+        .as_deref()
+        .filter(|value| !value.eq_ignore_ascii_case(&prize_name))
+    {
+        lines.push(format!(
+            "Récompense technique : `{}`",
+            sanitize_embed_mentions(aegis_name)
+        ));
+    }
+
+    lines.join("\n")
+}
+
+fn format_number_fr(value: i64) -> String {
+    let raw = value.unsigned_abs().to_string();
+    let mut output = String::new();
+
+    for (index, character) in raw.chars().rev().enumerate() {
+        if index > 0 && index % 3 == 0 {
+            output.push(' ');
+        }
+        output.push(character);
+    }
+
+    let mut formatted = output.chars().rev().collect::<String>();
+    if value < 0 {
+        formatted.insert(0, '-');
+    }
+    formatted
+}
+
 fn format_number(value: i64) -> String {
     let raw = value.abs().to_string();
     let mut output = String::new();
@@ -1340,6 +1468,62 @@ mod tests {
         assert_eq!(list.displayed_count, 1);
         assert_eq!(list.available_count, 2);
         assert!(list_summary(&list, "lignes").contains("les limites de champ des embeds Discord"));
+    }
+
+    #[test]
+    fn format_number_fr_uses_spaces() {
+        assert_eq!(format_number_fr(2_142_720), "2 142 720");
+        assert_eq!(format_number_fr(-12_345), "-12 345");
+    }
+
+    #[test]
+    fn mvp_kill_field_uses_discord_timestamps_and_french_fallbacks() {
+        let entry = MvpKillEntry {
+            mvp_date: Some("2026-06-03 16:25:02".to_string()),
+            mvp_timestamp: Some(1_717_424_702),
+            killer_id: 42,
+            killer_name: "GhostPunishR".to_string(),
+            monster_id: 1272,
+            monster_name: "Doppelganger".to_string(),
+            monster_aegis_name: Some("DOPPELGANGER".to_string()),
+            map: "gl_chyard".to_string(),
+            mvp_exp: Some(2_142_720),
+            prize_id: 607,
+            prize_name: "Yggdrasil Berry".to_string(),
+            prize_aegis_name: Some("Yggdrasilberry".to_string()),
+        };
+
+        let value = mvp_kill_field_value(&entry);
+
+        assert!(value.contains("Joueur : GhostPunishR"));
+        assert!(value.contains("Carte : `gl_chyard`"));
+        assert!(value.contains("Date : <t:1717424702:F> (<t:1717424702:R>)"));
+        assert!(value.contains("EXP MVP : 2 142 720"));
+        assert!(value.contains("Récompense : Yggdrasil Berry"));
+    }
+
+    #[test]
+    fn mvp_kill_field_marks_missing_exp_as_unavailable() {
+        let entry = MvpKillEntry {
+            mvp_date: None,
+            mvp_timestamp: None,
+            killer_id: 42,
+            killer_name: "Personnage #42".to_string(),
+            monster_id: 1272,
+            monster_name: "MVP #1272".to_string(),
+            monster_aegis_name: None,
+            map: "Carte inconnue".to_string(),
+            mvp_exp: Some(0),
+            prize_id: 0,
+            prize_name: "Item #0".to_string(),
+            prize_aegis_name: None,
+        };
+
+        let value = mvp_kill_field_value(&entry);
+
+        assert!(value.contains("Date : Non disponible"));
+        assert!(value.contains("EXP MVP : Non disponible"));
+        assert!(value.contains("Récompense : Item #0"));
     }
 
     #[test]

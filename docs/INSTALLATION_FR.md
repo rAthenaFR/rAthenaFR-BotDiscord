@@ -47,6 +47,7 @@ Installe les scripts optionnels selon les fonctionnalités activées :
 ```bash
 mariadb -u root -p ragnarok < sql/rathenafr_item_search.sql
 mariadb -u root -p ragnarok < sql/rathenafr_mvp_regular_spawn.sql
+mariadb -u root -p ragnarok < sql/sql_updates.sql
 mariadb -u root -p ragnarok < sql/discord_gmmsg_queue.sql
 mariadb -u root -p ragnarok < sql/create-gmmsg-queue-user.sql
 mariadb -u root -p ragnarok < sql/create-account-management-user.sql

@@ -238,11 +238,7 @@ const MVP_LOG_EMPTY_MESSAGE: &str = "Aucun MVP n’a encore été enregistré da
 const MVP_LOG_KILLER_ID_COLUMNS: &[&str] =
     &["kill_char_id", "killer_char_id", "char_id", "src_charid"];
 const MVP_LOG_KILLER_NAME_COLUMNS: &[&str] = &["killer_name", "char_name", "name"];
-const MVP_LOG_MONSTER_ID_COLUMNS: &[&str] = &["monster_id", "mob_id"];
 const MVP_LOG_DATE_COLUMNS: &[&str] = &["mvp_date", "time", "date", "logtime", "atcommand_date"];
-const MVP_LOG_MAP_COLUMNS: &[&str] = &["map", "mapname", "last_map"];
-const MVP_LOG_EXP_COLUMNS: &[&str] = &["mvp_exp", "mvpexp", "mexp"];
-const MVP_LOG_PRIZE_COLUMNS: &[&str] = &["prize", "item_id", "drop_id"];
 
 #[derive(Debug, Clone)]
 struct AvailableColumns {
@@ -300,19 +296,20 @@ struct MonsterSearchColumns {
 struct MvpLogColumns {
     killer_id: Option<String>,
     killer_name: Option<String>,
-    monster_id: Option<String>,
     date: Option<String>,
-    map: Option<String>,
-    exp: Option<String>,
-    prize: Option<String>,
 }
 
 #[derive(Debug, Clone)]
-struct MvpMobJoin {
-    table_name: String,
-    mob_id_column: String,
-    monster_id_column: String,
-    display_name_column: String,
+struct MvpTimerRow {
+    monster_id: i64,
+    monster_name: String,
+    map_name: String,
+    respawn_minutes: i64,
+    respawn_variance_minutes: i64,
+    last_kill_ts: Option<i64>,
+    earliest_spawn_ts: Option<i64>,
+    latest_spawn_ts: Option<i64>,
+    spawn_state: String,
 }
 
 fn cast_column_as_char(column_name: &str) -> String {
@@ -378,23 +375,6 @@ fn optional_char_select(columns: &AvailableColumns, candidates: &[&str], alias: 
         .unwrap_or_else(|| format!("NULL AS {alias}"))
 }
 
-fn optional_qualified_char_select(column: Option<&String>, alias: &str) -> String {
-    column
-        .map(|column| format!("{} AS {alias}", cast_qualified_column_as_char("ml", column)))
-        .unwrap_or_else(|| format!("NULL AS {alias}"))
-}
-
-fn optional_qualified_signed_select(column: Option<&String>, alias: &str) -> String {
-    column
-        .map(|column| {
-            format!(
-                "{} AS {alias}",
-                cast_qualified_column_as_signed("ml", column)
-            )
-        })
-        .unwrap_or_else(|| format!("NULL AS {alias}"))
-}
-
 fn find_column_dynamic(columns: &AvailableColumns, candidates: &[String]) -> Option<String> {
     candidates.iter().find_map(|candidate| {
         columns
@@ -416,6 +396,8 @@ fn mvp_drop_id_columns(columns: &AvailableColumns) -> Vec<String> {
             format!("MvpDrop{index}ID"),
             format!("mvpdrop{index}id"),
             format!("mvp_drop{index}_id"),
+            format!("mvpdrop{index}_item"),
+            format!("mvp_drop{index}_item"),
         ];
 
         if let Some(id_column) = find_column_dynamic(columns, &id_candidates) {
@@ -430,11 +412,7 @@ fn mvp_log_columns(columns: &AvailableColumns) -> MvpLogColumns {
     MvpLogColumns {
         killer_id: columns.first(MVP_LOG_KILLER_ID_COLUMNS),
         killer_name: columns.first(MVP_LOG_KILLER_NAME_COLUMNS),
-        monster_id: columns.first(MVP_LOG_MONSTER_ID_COLUMNS),
         date: columns.first(MVP_LOG_DATE_COLUMNS),
-        map: columns.first(MVP_LOG_MAP_COLUMNS),
-        exp: columns.first(MVP_LOG_EXP_COLUMNS),
-        prize: columns.first(MVP_LOG_PRIZE_COLUMNS),
     }
 }
 
@@ -470,31 +448,6 @@ fn mvp_killer_name_expression(columns: &MvpLogColumns, can_join_char: bool) -> S
     }
 }
 
-fn mvp_monster_name_expression(mob_join: Option<&MvpMobJoin>) -> String {
-    mob_join
-        .map(|join| {
-            format!(
-                "COALESCE(NULLIF({}, ''), CONCAT('MVP #', {}))",
-                cast_qualified_column_as_char("m", &join.display_name_column),
-                cast_qualified_column_as_char("ml", &join.monster_id_column)
-            )
-        })
-        .unwrap_or_else(|| "NULL".to_string())
-}
-
-fn mvp_date_order_clause(columns: &MvpLogColumns) -> String {
-    columns
-        .date
-        .as_ref()
-        .map(|column| {
-            format!(
-                "ORDER BY {} DESC",
-                cast_qualified_column_as_char("ml", column)
-            )
-        })
-        .unwrap_or_else(|| "ORDER BY 1 DESC".to_string())
-}
-
 fn drop_column_pairs(columns: &AvailableColumns) -> Vec<(String, Option<String>, String)> {
     let mut pairs = Vec::new();
 
@@ -504,6 +457,7 @@ fn drop_column_pairs(columns: &AvailableColumns) -> Vec<(String, Option<String>,
             format!("Drop{index}ID"),
             format!("drop{index}id"),
             format!("drop{index}_id"),
+            format!("drop{index}_item"),
         ];
         let rate_candidates = vec![
             format!("Drop{index}per"),
@@ -528,11 +482,14 @@ fn drop_column_pairs(columns: &AvailableColumns) -> Vec<(String, Option<String>,
             format!("MvpDrop{index}ID"),
             format!("mvpdrop{index}id"),
             format!("mvp_drop{index}_id"),
+            format!("mvpdrop{index}_item"),
+            format!("mvp_drop{index}_item"),
         ];
         let rate_candidates = vec![
             format!("MvpDrop{index}per"),
             format!("MVPDrop{index}per"),
             format!("mvpdrop{index}per"),
+            format!("mvpdrop{index}_rate"),
             format!("mvp_drop{index}_rate"),
         ];
 
@@ -546,6 +503,14 @@ fn drop_column_pairs(columns: &AvailableColumns) -> Vec<(String, Option<String>,
     }
 
     pairs
+}
+
+fn drop_item_match_condition(column_name: &str) -> String {
+    format!(
+        "(BINARY {} = BINARY ? OR {} = ?)",
+        cast_column_as_char(column_name),
+        cast_column_as_signed(column_name)
+    )
 }
 
 fn format_drop_rate(rate: Option<i64>) -> String {
@@ -586,49 +551,138 @@ fn join_limited_lines(lines: Vec<String>, empty_message: &str) -> Vec<String> {
     }
 }
 
-fn format_mvp_log_line(row: &MySqlRow) -> Result<String> {
-    let date = row
-        .try_get::<Option<String>, _>("mvp_date")?
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| "date inconnue".to_string());
-    let killer = row
-        .try_get::<Option<String>, _>("killer_name")?
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| "Tueur inconnu".to_string());
-    let monster_id = row.try_get::<Option<i64>, _>("monster_id")?;
+fn discord_relative_timestamp(timestamp: Option<i64>) -> String {
+    match timestamp {
+        Some(value) => format!("<t:{value}:R>"),
+        None => "Non disponible".to_string(),
+    }
+}
+
+fn format_mvp_spawn_state(state: &str) -> &'static str {
+    match state {
+        "waiting" => "En attente",
+        "window" => "Fenêtre de respawn ouverte",
+        "available" => "Disponible probable",
+        "unknown" => "Timer inconnu",
+        _ => "Statut inconnu",
+    }
+}
+
+fn format_mvp_respawn_duration(respawn_minutes: i64, variance_minutes: i64) -> String {
+    if respawn_minutes > 0 && variance_minutes > 0 {
+        format!("{respawn_minutes} min ± {variance_minutes} min")
+    } else if respawn_minutes > 0 {
+        format!("{respawn_minutes} min")
+    } else {
+        "Respawn inconnu".to_string()
+    }
+}
+
+fn format_mvp_timer_line(timer: &MvpTimerRow) -> String {
+    let header = format!(
+        "**{}**\nID : `{}`\nCarte : `{}`",
+        timer.monster_name, timer.monster_id, timer.map_name
+    );
+    let last_kill = discord_relative_timestamp(timer.last_kill_ts);
+    let status = format_mvp_spawn_state(&timer.spawn_state);
+
+    match timer.spawn_state.as_str() {
+        "unknown" => format!(
+            "{header}\nDernier kill : Aucun log connu\nRespawn : {}\nStatut : {status}, MVP peut être disponible",
+            format_mvp_respawn_duration(
+                timer.respawn_minutes,
+                timer.respawn_variance_minutes
+            )
+        ),
+        "waiting" => format!(
+            "{header}\nDernier kill : {last_kill}\nRespawn au plus tôt : {}\nRespawn au plus tard : {}\nStatut : {status}",
+            discord_relative_timestamp(timer.earliest_spawn_ts),
+            discord_relative_timestamp(timer.latest_spawn_ts)
+        ),
+        "window" => format!(
+            "{header}\nDernier kill : {last_kill}\nFenêtre ouverte depuis : {}\nRespawn maximum : {}\nStatut : {status}",
+            discord_relative_timestamp(timer.earliest_spawn_ts),
+            discord_relative_timestamp(timer.latest_spawn_ts)
+        ),
+        "available" => format!(
+            "{header}\nDernier kill : {last_kill}\nRespawn maximum dépassé depuis : {}\nStatut : {status}",
+            discord_relative_timestamp(timer.latest_spawn_ts)
+        ),
+        _ => format!(
+            "{header}\nDernier kill : {last_kill}\nRespawn au plus tôt : {}\nRespawn au plus tard : {}\nStatut : {status}",
+            discord_relative_timestamp(timer.earliest_spawn_ts),
+            discord_relative_timestamp(timer.latest_spawn_ts)
+        ),
+    }
+}
+
+fn mvp_timer_row_from_row(row: MySqlRow) -> Result<MvpTimerRow> {
+    let monster_id = row.try_get::<i64, _>("monster_id")?;
     let monster_name = row
         .try_get::<Option<String>, _>("monster_name")?
-        .filter(|value| !value.trim().is_empty());
-    let monster = match (monster_name, monster_id) {
-        (Some(name), Some(id)) => format!("**{}** (`{}`)", name, id),
-        (Some(name), None) => format!("**{}**", name),
-        (None, Some(id)) => format!("MVP `{id}`"),
-        (None, None) => "MVP inconnu".to_string(),
-    };
-    let map = row
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| format!("MVP #{monster_id}"));
+    let map_name = row
         .try_get::<Option<String>, _>("map_name")?
-        .filter(|value| !value.trim().is_empty());
-    let mvp_exp = row.try_get::<Option<i64>, _>("mvp_exp")?;
-    let prize = row.try_get::<Option<i64>, _>("prize")?;
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "inconnue".to_string());
 
-    let mut details = Vec::new();
-    if let Some(map) = map {
-        details.push(format!("carte `{map}`"));
-    }
-    if let Some(mvp_exp) = mvp_exp.filter(|value| *value > 0) {
-        details.push(format!("EXP MVP `{mvp_exp}`"));
-    }
-    if let Some(prize) = prize.filter(|value| *value > 0) {
-        details.push(format!("prix `{prize}`"));
-    }
+    Ok(MvpTimerRow {
+        monster_id,
+        monster_name,
+        map_name,
+        respawn_minutes: row
+            .try_get::<Option<i64>, _>("respawn_minutes")?
+            .unwrap_or_default(),
+        respawn_variance_minutes: row
+            .try_get::<Option<i64>, _>("respawn_variance_minutes")?
+            .unwrap_or_default(),
+        last_kill_ts: row.try_get("last_kill_ts")?,
+        earliest_spawn_ts: row.try_get("earliest_spawn_ts")?,
+        latest_spawn_ts: row.try_get("latest_spawn_ts")?,
+        spawn_state: row
+            .try_get::<Option<String>, _>("spawn_state")?
+            .unwrap_or_else(|| "unknown".to_string()),
+    })
+}
 
-    let suffix = if details.is_empty() {
-        String::new()
-    } else {
-        format!(" - {}", details.join(" - "))
-    };
+fn mvp_kill_entry_from_row(row: MySqlRow) -> Result<MvpKillEntry> {
+    let killer_id = row.try_get::<i64, _>("kill_char_id")?;
+    let monster_id = row.try_get::<i64, _>("monster_id")?;
+    let prize_id = row.try_get::<i64, _>("prize")?;
 
-    Ok(format!("`{date}` - **{killer}** a tué {monster}{suffix}"))
+    Ok(MvpKillEntry {
+        mvp_date: row
+            .try_get::<Option<String>, _>("mvp_date")?
+            .filter(|value| !value.trim().is_empty()),
+        mvp_timestamp: row.try_get("mvp_ts")?,
+        killer_id,
+        killer_name: row
+            .try_get::<Option<String>, _>("killer_name")?
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| format!("Personnage #{killer_id}")),
+        monster_id,
+        monster_name: row
+            .try_get::<Option<String>, _>("monster_name")?
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| format!("MVP #{monster_id}")),
+        monster_aegis_name: row
+            .try_get::<Option<String>, _>("monster_aegis_name")?
+            .filter(|value| !value.trim().is_empty()),
+        map: row
+            .try_get::<Option<String>, _>("map_name")?
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "Carte inconnue".to_string()),
+        mvp_exp: row.try_get("mvp_exp")?,
+        prize_id,
+        prize_name: row
+            .try_get::<Option<String>, _>("prize_name")?
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| format!("Item #{prize_id}")),
+        prize_aegis_name: row
+            .try_get::<Option<String>, _>("prize_aegis_name")?
+            .filter(|value| !value.trim().is_empty()),
+    })
 }
 
 fn item_search_entry_from_row(row: MySqlRow) -> Result<ItemSearchEntry> {
@@ -821,29 +875,6 @@ impl RAthenaFrDatabase {
             level: columns.first(MONSTER_LEVEL_COLUMN_CANDIDATES),
             hp: columns.first(MONSTER_HP_COLUMN_CANDIDATES),
             searchable_names: columns.all(MONSTER_DISPLAY_COLUMN_CANDIDATES),
-        }))
-    }
-
-    async fn configured_mob_join(
-        &self,
-        preferred_table: &str,
-        monster_id_column: Option<&String>,
-    ) -> Result<Option<MvpMobJoin>> {
-        let Some(monster_id_column) = monster_id_column else {
-            return Ok(None);
-        };
-        if !self.table_exists(preferred_table).await? {
-            return Ok(None);
-        }
-        let Some(columns) = self.monster_search_columns(preferred_table).await? else {
-            return Ok(None);
-        };
-
-        Ok(Some(MvpMobJoin {
-            table_name: preferred_table.to_string(),
-            mob_id_column: columns.id,
-            monster_id_column: monster_id_column.clone(),
-            display_name_column: columns.display_name,
         }))
     }
 
@@ -2627,16 +2658,12 @@ impl RAthenaFrDatabase {
     pub async fn mob_detail_lines(
         &self,
         query: &str,
-        preferred_table: &str,
+        _preferred_table: &str,
     ) -> Result<Option<Vec<String>>> {
         let Some(monster) = self.search_monsters(query, 1).await?.into_iter().next() else {
             return Ok(None);
         };
-        let table_name = if self.table_exists(preferred_table).await? {
-            preferred_table
-        } else {
-            monster.source_table.as_str()
-        };
+        let table_name = monster.source_table.as_str();
         let Some(search_columns) = self.monster_search_columns(table_name).await? else {
             return Ok(Some(vec![
                 format!("ID: `{}`", monster.monster_id),
@@ -2762,17 +2789,13 @@ impl RAthenaFrDatabase {
     pub async fn mob_drop_lines(
         &self,
         query: &str,
-        preferred_table: &str,
+        _preferred_table: &str,
         limit: u32,
     ) -> Result<Option<Vec<String>>> {
         let Some(monster) = self.search_monsters(query, 1).await?.into_iter().next() else {
             return Ok(None);
         };
-        let table_name = if self.table_exists(preferred_table).await? {
-            preferred_table
-        } else {
-            monster.source_table.as_str()
-        };
+        let table_name = monster.source_table.as_str();
         let Some(search_columns) = self.monster_search_columns(table_name).await? else {
             return Ok(Some(vec![format!(
                 "Aucune colonne de drop lisible dans `{table_name}`."
@@ -2793,8 +2816,8 @@ impl RAthenaFrDatabase {
             .flat_map(|(id_column, rate_column, label)| {
                 let safe_label = label.replace(' ', "_").to_ascii_lowercase();
                 let mut columns = vec![format!(
-                    "{} AS {}_id",
-                    cast_column_as_signed(id_column),
+                    "{} AS {}_item",
+                    cast_column_as_char(id_column),
                     safe_label
                 )];
                 columns.push(
@@ -2833,11 +2856,30 @@ impl RAthenaFrDatabase {
                 break;
             }
             let alias = label.replace(' ', "_").to_ascii_lowercase();
-            let item_id: Option<i64> = row.try_get(format!("{alias}_id").as_str())?;
+            let item_reference: Option<String> = row.try_get(format!("{alias}_item").as_str())?;
             let rate: Option<i64> = row.try_get(format!("{alias}_rate").as_str())?;
-            if let Some(item_id) = item_id.filter(|value| *value > 0) {
+            let Some(item_reference) = item_reference
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty() && value != "0")
+            else {
+                continue;
+            };
+            let item_label = self
+                .search_items(&item_reference, 1)
+                .await?
+                .into_iter()
+                .next()
+                .map(|item| {
+                    format!(
+                        "{} (`{}`, `{}`)",
+                        item.display_name, item.item_id, item.aegis_name
+                    )
+                })
+                .unwrap_or_else(|| format!("`{item_reference}`"));
+
+            if !item_label.is_empty() {
                 lines.push(format!(
-                    "{label}: item `{item_id}` - {}",
+                    "{label}: {item_label} - {}",
                     format_drop_rate(rate)
                 ));
             }
@@ -2890,7 +2932,7 @@ impl RAthenaFrDatabase {
 
         let conditions = pairs
             .iter()
-            .map(|(id_column, _, _)| format!("{} = ?", cast_column_as_signed(id_column)))
+            .map(|(id_column, _, _)| drop_item_match_condition(id_column))
             .collect::<Vec<_>>()
             .join(" OR ");
         let sql = format!(
@@ -2910,7 +2952,7 @@ impl RAthenaFrDatabase {
         );
         let mut query = sqlx::query(&sql);
         for _ in &pairs {
-            query = query.bind(item.item_id);
+            query = query.bind(&item.aegis_name).bind(item.item_id);
         }
         let rows = query
             .bind(limit)
@@ -3011,63 +3053,95 @@ impl RAthenaFrDatabase {
         }
 
         let limit = limit.clamp(1, 500);
-
-        let query = format!(
+        let has_mvp_log = self.table_exists("mvplog").await?;
+        let query = if has_mvp_log {
+            r#"
+            WITH last_kill AS (
+                SELECT
+                    monster_id,
+                    map,
+                    MAX(mvp_date) AS last_kill_at
+                FROM mvplog
+                GROUP BY monster_id, map
+            )
+            SELECT
+                CAST(s.monster_id AS SIGNED) AS monster_id,
+                s.monster_name,
+                COALESCE(NULLIF(s.map_name, ''), 'inconnue') AS map_name,
+                CAST(ROUND(COALESCE(s.respawn_minutes, 0)) AS SIGNED) AS respawn_minutes,
+                CAST(ROUND(COALESCE(s.respawn_variance_minutes, 0)) AS SIGNED) AS respawn_variance_minutes,
+                CAST(UNIX_TIMESTAMP(lk.last_kill_at) AS SIGNED) AS last_kill_ts,
+                CAST(UNIX_TIMESTAMP(DATE_ADD(
+                    lk.last_kill_at,
+                    INTERVAL s.respawn_minutes MINUTE
+                )) AS SIGNED) AS earliest_spawn_ts,
+                CAST(UNIX_TIMESTAMP(DATE_ADD(
+                    lk.last_kill_at,
+                    INTERVAL (s.respawn_minutes + COALESCE(s.respawn_variance_minutes, 0)) MINUTE
+                )) AS SIGNED) AS latest_spawn_ts,
+                CASE
+                    WHEN lk.last_kill_at IS NULL THEN 'unknown'
+                    WHEN NOW() < DATE_ADD(
+                        lk.last_kill_at,
+                        INTERVAL s.respawn_minutes MINUTE
+                    ) THEN 'waiting'
+                    WHEN NOW() <= DATE_ADD(
+                        lk.last_kill_at,
+                        INTERVAL (s.respawn_minutes + COALESCE(s.respawn_variance_minutes, 0)) MINUTE
+                    ) THEN 'window'
+                    ELSE 'available'
+                END AS spawn_state
+            FROM rathenafr_mvp_regular_spawn s
+            LEFT JOIN last_kill lk
+                ON lk.monster_id = s.monster_id
+               AND lk.map COLLATE utf8mb4_unicode_ci
+                   = s.map_name COLLATE utf8mb4_unicode_ci
+            ORDER BY
+                CASE
+                    WHEN lk.last_kill_at IS NULL THEN 3
+                    WHEN NOW() < DATE_ADD(
+                        lk.last_kill_at,
+                        INTERVAL s.respawn_minutes MINUTE
+                    ) THEN 1
+                    WHEN NOW() <= DATE_ADD(
+                        lk.last_kill_at,
+                        INTERVAL (s.respawn_minutes + COALESCE(s.respawn_variance_minutes, 0)) MINUTE
+                    ) THEN 0
+                    ELSE 2
+                END,
+                s.monster_name ASC,
+                s.map_name ASC
+            LIMIT ?
+            "#
+        } else {
             r#"
             SELECT
-                CAST(monster_id AS SIGNED) AS monster_id,
-                monster_name,
-                aegis_name,
-                COALESCE(NULLIF(map_name, ''), 'inconnue') AS map_name,
-                CAST(ROUND(COALESCE(respawn_minutes, 0)) AS SIGNED) AS respawn_minutes,
-                CAST(ROUND(COALESCE(respawn_variance_minutes, 0)) AS SIGNED) AS respawn_variance_minutes
-            FROM rathenafr_mvp_regular_spawn
-            ORDER BY monster_name ASC, map_name ASC
-            LIMIT {limit}
+                CAST(s.monster_id AS SIGNED) AS monster_id,
+                s.monster_name,
+                COALESCE(NULLIF(s.map_name, ''), 'inconnue') AS map_name,
+                CAST(ROUND(COALESCE(s.respawn_minutes, 0)) AS SIGNED) AS respawn_minutes,
+                CAST(ROUND(COALESCE(s.respawn_variance_minutes, 0)) AS SIGNED) AS respawn_variance_minutes,
+                CAST(NULL AS SIGNED) AS last_kill_ts,
+                CAST(NULL AS SIGNED) AS earliest_spawn_ts,
+                CAST(NULL AS SIGNED) AS latest_spawn_ts,
+                'unknown' AS spawn_state
+            FROM rathenafr_mvp_regular_spawn s
+            ORDER BY s.monster_name ASC, s.map_name ASC
+            LIMIT ?
             "#
-        );
+        };
 
-        let rows = sqlx::query(&query)
+        let rows = sqlx::query(query)
+            .bind(limit)
             .fetch_all(&self.pool)
             .await
             .context("récupération de la liste des MVP réguliers")?;
 
-        let mut lines = Vec::new();
-
-        for row in rows {
-            let monster_id = row.try_get::<i64, _>("monster_id")?;
-
-            let monster_name = row
-                .try_get::<Option<String>, _>("monster_name")?
-                .filter(|value| !value.trim().is_empty())
-                .unwrap_or_else(|| format!("MVP #{monster_id}"));
-
-            let map_name = row
-                .try_get::<Option<String>, _>("map_name")?
-                .filter(|value| !value.trim().is_empty())
-                .unwrap_or_else(|| "inconnue".to_string());
-
-            let respawn_minutes = row
-                .try_get::<Option<i64>, _>("respawn_minutes")?
-                .unwrap_or_default();
-
-            let variance_minutes = row
-                .try_get::<Option<i64>, _>("respawn_variance_minutes")?
-                .unwrap_or_default();
-
-            let respawn_text = if respawn_minutes > 0 && variance_minutes > 0 {
-                format!("{} min ± {} min", respawn_minutes, variance_minutes)
-            } else if respawn_minutes > 0 {
-                format!("{} min", respawn_minutes)
-            } else {
-                "respawn inconnu".to_string()
-            };
-
-            lines.push(format!(
-                "**{}** (`{}`) - `{}` - {}",
-                monster_name, monster_id, map_name, respawn_text
-            ));
-        }
+        let mut lines = rows
+            .into_iter()
+            .map(mvp_timer_row_from_row)
+            .map(|timer| timer.map(|timer| format_mvp_timer_line(&timer)))
+            .collect::<Result<Vec<_>>>()?;
 
         if lines.is_empty() {
             lines.push("Aucun MVP avec spawn régulier n’a été trouvé.".to_string());
@@ -3076,81 +3150,55 @@ impl RAthenaFrDatabase {
         Ok(lines)
     }
 
-    pub async fn mvp_last_lines(
-        &self,
-        preferred_mob_table: &str,
-        limit: u32,
-    ) -> Result<Vec<String>> {
-        if !self.table_exists("mvplog").await? {
-            return Ok(vec!["Table `mvplog` absente.".to_string()]);
-        }
-        let Some(columns) = self.table_columns("mvplog").await? else {
-            return Ok(vec!["Table `mvplog` absente.".to_string()]);
-        };
-        let log_columns = mvp_log_columns(&columns);
-        let can_join_char = log_columns.killer_id.is_some() && self.table_exists("char").await?;
-        let mob_join = self
-            .configured_mob_join(preferred_mob_table, log_columns.monster_id.as_ref())
-            .await?;
-        let char_join = if can_join_char {
-            let killer_id_column = log_columns.killer_id.as_deref().unwrap_or_default();
-            format!(
-                "LEFT JOIN `char` ON `char`.`char_id` = {}",
-                cast_qualified_column_as_signed("ml", killer_id_column)
-            )
-        } else {
-            String::new()
-        };
-        let mob_join_clause = mob_join
-            .as_ref()
-            .map(|join| {
-                format!(
-                    "LEFT JOIN {} m ON {} = {}",
-                    quote_identifier(&join.table_name),
-                    cast_qualified_column_as_signed("m", &join.mob_id_column),
-                    cast_qualified_column_as_signed("ml", &join.monster_id_column)
-                )
-            })
-            .unwrap_or_default();
-        let killer_name_expression = mvp_killer_name_expression(&log_columns, can_join_char);
-        let monster_name_expression = mvp_monster_name_expression(mob_join.as_ref());
-        let order_clause = mvp_date_order_clause(&log_columns);
-        let sql = format!(
+    pub async fn mvp_last_entries(&self, limit: u32) -> Result<Vec<MvpKillEntry>> {
+        let rows = sqlx::query(
             r#"
             SELECT
-                {},
-                {} AS killer_name,
-                {},
-                {} AS monster_name,
-                {},
-                {},
-                {}
-            FROM `mvplog` ml
-            {char_join}
-            {mob_join_clause}
-            {order_clause}
+                CAST(ml.mvp_date AS CHAR) AS mvp_date,
+                CAST(UNIX_TIMESTAMP(ml.mvp_date) AS SIGNED) AS mvp_ts,
+                CAST(ml.kill_char_id AS SIGNED) AS kill_char_id,
+                COALESCE(
+                    NULLIF(c.name, ''),
+                    CONCAT('Personnage #', ml.kill_char_id)
+                ) AS killer_name,
+                CAST(ml.monster_id AS SIGNED) AS monster_id,
+                COALESCE(
+                    NULLIF(m.monster_name, ''),
+                    CONCAT('MVP #', ml.monster_id)
+                ) AS monster_name,
+                NULLIF(m.aegis_name, '') AS monster_aegis_name,
+                ml.map AS map_name,
+                CAST(ml.mvpexp AS SIGNED) AS mvp_exp,
+                CAST(ml.prize AS SIGNED) AS prize,
+                COALESCE(
+                    NULLIF(i.item_name, ''),
+                    CONCAT('Item #', ml.prize)
+                ) AS prize_name,
+                NULLIF(i.aegis_name, '') AS prize_aegis_name
+            FROM mvplog ml
+            LEFT JOIN `char` c
+                ON c.char_id = ml.kill_char_id
+            LEFT JOIN (
+                SELECT
+                    monster_id,
+                    MAX(monster_name) AS monster_name,
+                    MAX(aegis_name) AS aegis_name
+                FROM rathenafr_mvp_list
+                GROUP BY monster_id
+            ) m
+                ON m.monster_id = ml.monster_id
+            LEFT JOIN rathenafr_item_search i
+                ON i.item_id = ml.prize
+            ORDER BY ml.mvp_date DESC
             LIMIT ?
             "#,
-            optional_qualified_char_select(log_columns.date.as_ref(), "mvp_date"),
-            killer_name_expression,
-            optional_qualified_signed_select(log_columns.monster_id.as_ref(), "monster_id"),
-            monster_name_expression,
-            optional_qualified_char_select(log_columns.map.as_ref(), "map_name"),
-            optional_qualified_signed_select(log_columns.exp.as_ref(), "mvp_exp"),
-            optional_qualified_signed_select(log_columns.prize.as_ref(), "prize"),
-        );
-        let rows = sqlx::query(&sql)
-            .bind(limit)
-            .fetch_all(&self.pool)
-            .await
-            .context("récupération des derniers MVP")?;
+        )
+        .bind(limit.clamp(1, 11))
+        .fetch_all(&self.pool)
+        .await
+        .context("récupération des derniers MVP")?;
 
-        Ok(join_limited_lines(
-            rows.into_iter()
-                .map(|row| format_mvp_log_line(&row))
-                .collect::<Result<Vec<_>>>()?,
-            MVP_LOG_EMPTY_MESSAGE,
-        ))
+        rows.into_iter().map(mvp_kill_entry_from_row).collect()
     }
 
     pub async fn mvp_top_lines(
@@ -3759,6 +3807,7 @@ impl RAthenaFrDatabase {
             .as_ref()
             .map(|column| cast_column_as_char(column))
             .unwrap_or_else(|| "NULL".to_string());
+        let order_column = applied.as_ref().unwrap_or(&revision);
         let sql = format!(
             r#"
             SELECT
@@ -3770,7 +3819,7 @@ impl RAthenaFrDatabase {
             "#,
             cast_column_as_char(&revision),
             applied_expr,
-            quote_identifier(&revision),
+            quote_identifier(order_column),
         );
 
         let rows = sqlx::query(&sql)
@@ -3886,7 +3935,7 @@ mod tests {
                 "id".to_string(),
                 "MEXP".to_string(),
                 "mvp_exp".to_string(),
-                "MvpDrop1id".to_string(),
+                "mvpdrop1_item".to_string(),
             ],
         };
 
@@ -3894,7 +3943,43 @@ mod tests {
             columns.first(MOB_MVP_EXP_COLUMNS).as_deref(),
             Some("mvp_exp")
         );
-        assert_eq!(mvp_drop_id_columns(&columns), vec!["MvpDrop1id"]);
+        assert_eq!(mvp_drop_id_columns(&columns), vec!["mvpdrop1_item"]);
+    }
+
+    #[test]
+    fn drop_columns_detect_current_rathena_renewal_schema() {
+        let columns = AvailableColumns {
+            names: vec![
+                "drop1_item".to_string(),
+                "drop1_rate".to_string(),
+                "mvpdrop1_item".to_string(),
+                "mvpdrop1_rate".to_string(),
+            ],
+        };
+
+        assert_eq!(
+            drop_column_pairs(&columns),
+            vec![
+                (
+                    "drop1_item".to_string(),
+                    Some("drop1_rate".to_string()),
+                    "Drop 1".to_string(),
+                ),
+                (
+                    "mvpdrop1_item".to_string(),
+                    Some("mvpdrop1_rate".to_string()),
+                    "MVP drop 1".to_string(),
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn drop_item_match_supports_aegis_names_and_legacy_ids() {
+        let condition = drop_item_match_condition("drop1_item");
+
+        assert!(condition.contains("BINARY CAST(`drop1_item` AS CHAR) = BINARY ?"));
+        assert!(condition.contains("CAST(`drop1_item` AS SIGNED) = ?"));
     }
 
     #[test]
@@ -3913,10 +3998,76 @@ mod tests {
 
         assert_eq!(detected.date.as_deref(), Some("mvp_date"));
         assert_eq!(detected.killer_id.as_deref(), Some("kill_char_id"));
-        assert_eq!(detected.monster_id.as_deref(), Some("monster_id"));
-        assert_eq!(detected.exp.as_deref(), Some("mvpexp"));
-        assert_eq!(detected.map.as_deref(), Some("map"));
-        assert_eq!(detected.prize.as_deref(), Some("prize"));
+    }
+
+    #[test]
+    fn mvp_timer_formats_waiting_state_with_discord_timestamps() {
+        let timer = MvpTimerRow {
+            monster_id: 1511,
+            monster_name: "Amon Ra".to_string(),
+            map_name: "moc_pryd06".to_string(),
+            respawn_minutes: 60,
+            respawn_variance_minutes: 10,
+            last_kill_ts: Some(1_700_000_000),
+            earliest_spawn_ts: Some(1_700_003_600),
+            latest_spawn_ts: Some(1_700_004_200),
+            spawn_state: "waiting".to_string(),
+        };
+
+        let line = format_mvp_timer_line(&timer);
+
+        assert!(line.contains("Dernier kill : <t:1700000000:R>"));
+        assert!(line.contains("Respawn au plus tôt : <t:1700003600:R>"));
+        assert!(line.contains("Respawn au plus tard : <t:1700004200:R>"));
+        assert!(line.contains("Statut : En attente"));
+        assert!(!line.contains("`<t:"));
+        assert!(!line.contains("60 min"));
+    }
+
+    #[test]
+    fn mvp_timer_formats_window_and_available_states() {
+        let mut timer = MvpTimerRow {
+            monster_id: 1511,
+            monster_name: "Amon Ra".to_string(),
+            map_name: "moc_pryd06".to_string(),
+            respawn_minutes: 60,
+            respawn_variance_minutes: 10,
+            last_kill_ts: Some(1_700_000_000),
+            earliest_spawn_ts: Some(1_700_003_600),
+            latest_spawn_ts: Some(1_700_004_200),
+            spawn_state: "window".to_string(),
+        };
+
+        let window = format_mvp_timer_line(&timer);
+        assert!(window.contains("Fenêtre ouverte depuis : <t:1700003600:R>"));
+        assert!(window.contains("Respawn maximum : <t:1700004200:R>"));
+        assert!(window.contains("Statut : Fenêtre de respawn ouverte"));
+
+        timer.spawn_state = "available".to_string();
+        let available = format_mvp_timer_line(&timer);
+        assert!(available.contains("Respawn maximum dépassé depuis : <t:1700004200:R>"));
+        assert!(available.contains("Statut : Disponible probable"));
+    }
+
+    #[test]
+    fn mvp_timer_formats_unknown_state_with_static_respawn() {
+        let timer = MvpTimerRow {
+            monster_id: 1511,
+            monster_name: "Amon Ra".to_string(),
+            map_name: "moc_pryd06".to_string(),
+            respawn_minutes: 60,
+            respawn_variance_minutes: 10,
+            last_kill_ts: None,
+            earliest_spawn_ts: None,
+            latest_spawn_ts: None,
+            spawn_state: "unknown".to_string(),
+        };
+
+        let line = format_mvp_timer_line(&timer);
+
+        assert!(line.contains("Dernier kill : Aucun log connu"));
+        assert!(line.contains("Respawn : 60 min ± 10 min"));
+        assert!(line.contains("Statut : Timer inconnu, MVP peut être disponible"));
     }
 
     #[test]
@@ -3924,11 +4075,7 @@ mod tests {
         let columns = MvpLogColumns {
             killer_id: Some("kill_char_id".to_string()),
             killer_name: None,
-            monster_id: None,
             date: None,
-            map: None,
-            exp: None,
-            prize: None,
         };
         let expression = mvp_killer_name_expression(&columns, true);
 

@@ -14,6 +14,7 @@ Le dossier `sql/` contient les scripts d’installation et de droits à exécute
 | `sql/discord_gmmsg_queue.sql` | Crée ou met à jour la table `discord_gmmsg_queue`. |
 | `sql/rathenafr_item_search.sql` | Crée et rafraîchit `rathenafr_item_search`, source SQL de `/item info`. |
 | `sql/rathenafr_mvp_regular_spawn.sql` | Crée `rathenafr_mvp_list` et la vue `rathenafr_mvp_regular_spawn` utilisée par `/mvp list`. |
+| `sql/sql_updates.sql` | Crée la table de compatibilité lue par `/db last-update` lorsque rAthena ne la fournit pas. |
 
 ## Permissions recommandées
 
