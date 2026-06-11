@@ -5,6 +5,7 @@
 --
 -- /createaccount utilise INSERT sur login.
 -- /staff account-manage utilise UPDATE cible sur login si la commande est activee.
+-- Les droits accordes par ce script s'ajoutent aux droits deja presents.
 
 CREATE USER IF NOT EXISTS 'rathenafr_bot'@'%' IDENTIFIED BY 'change_me_with_a_strong_password';
 

@@ -63,7 +63,10 @@ GRANT INSERT ON `ragnarok`.`discord_gmmsg_queue` TO 'rathenafr_bot'@'%';
 ```
 
 > [!WARNING]
-> Les scripts combinés peuvent accorder plusieurs droits optionnels. Relis-les et retire les droits correspondant aux fonctions désactivées.
+> Les scripts de permissions sont cumulatifs : ils ajoutent les droits demandés sans révoquer les anciens. Relis les droits après chaque changement et retire ceux correspondant aux fonctions désactivées.
+
+> [!NOTE]
+> `CREATE USER IF NOT EXISTS` conserve le mot de passe d’un compte SQL existant. Utilise explicitement `ALTER USER` lors d’une rotation de secret.
 
 Interdictions recommandées pour le compte du bot :
 

@@ -9,6 +9,8 @@
 - Localisation des descriptions de commandes, sous-commandes et options slash, des réponses runtime, des embeds et des boutons de pagination MVP.
 - Ajout de variantes d’embeds localisées pour les commandes publiques et staff, les erreurs, les listes, les comptes, le marché, les monstres, les MVP et les logs staff.
 - Ajout de tests i18n vérifiant la présence des clés dans les sept catalogues, la cohérence des variables FTL et la normalisation des locales Discord.
+- Ajout d’un catalogue SQL reproductible de 202 MVP, dont 61 spawns réguliers utilisés par `/mvp list`.
+- Ajout de `sql/verify-installation.sql` et `sql/README_FR.md` pour installer et contrôler les objets SQL du bot.
 
 ### Modifié
 
@@ -18,6 +20,7 @@
 - Découpage de la configuration sous `src/config/` et des modèles rAthenaFR sous `src/rathenafr/models/`.
 - Conservation de `RAthenaFrDatabase` comme API publique stable et limitation des helpers internes à leur module.
 - Conservation des noms de commandes slash, du fallback français et du comportement des permissions staff.
+- Mise à jour de la documentation d’installation, de base de données, GMMSG, sécurité et dépannage avec l’ordre SQL reproductible.
 
 ### Corrigé
 
@@ -25,6 +28,9 @@
 - Correction des imports et réexports cassés après le déplacement des modules de configuration, modèles, interactions et embeds.
 - Correction de la locale utilisée lors de la création initiale du panneau MVP.
 - Correction des attributs Clippy dupliqués, des signatures utilisant `&String`, des visibilités de tests et de plusieurs simplifications sans changement métier.
+- Correction de `rathenafr_item_search.sql` : le catalogue est désormais stocké dans `rathenafr_item_list`, exposé par une vue stable et migré depuis l’ancien format sans supprimer les entrées personnalisées.
+- Correction de `discord_gmmsg_queue.sql` afin de compléter toutes les colonnes et l’index manquants sans supprimer les lignes existantes ni tronquer silencieusement les messages.
+- Correction de `rathenafr_mvp_regular_spawn.sql` afin d’aligner le schéma et la vue sur les requêtes utilisées par le bot.
 - Validation finale réussie avec `cargo fmt --all`, `cargo check --workspace`, Clippy avec `-D warnings` et 87 tests.
 
 ### Nettoyage
@@ -42,7 +48,8 @@
 
 ### Compatibilité
 
-- Aucun changement du schéma SQL, des permissions staff ou des noms de commandes slash publiques.
+- Les scripts SQL migrent les anciens objets de compatibilité sans modifier le schéma natif rAthena.
+- Aucun changement des permissions staff ou des noms de commandes slash publiques.
 - Les appels existants à `RAthenaFrDatabase` restent compatibles.
 
 ## 0.2.3

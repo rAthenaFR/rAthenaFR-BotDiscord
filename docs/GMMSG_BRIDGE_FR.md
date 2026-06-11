@@ -43,6 +43,11 @@ mariadb -u root -p ragnarok < sql/discord_gmmsg_queue.sql
 mariadb -u root -p ragnarok < sql/create-gmmsg-queue-user.sql
 ```
 
+Le premier script crée la table complète ou ajoute les colonnes et l’index manquants à une ancienne version. Il conserve les lignes existantes et peut être réexécuté.
+
+> [!WARNING]
+> La migration s’arrête si une ancienne ligne dépasse 180 octets. Archive ou corrige ces messages avant de relancer le script; ils ne sont jamais tronqués automatiquement.
+
 Le schéma contient notamment :
 
 ```sql
@@ -60,6 +65,9 @@ GRANT INSERT ON `ragnarok`.`discord_gmmsg_queue` TO 'rathenafr_bot'@'%';
 
 > [!CAUTION]
 > Ne donne pas au bot `UPDATE` ou `DELETE` sur la file. Le compte SQL utilisé par rAthena traite les lignes; le bot ne fait que les créer.
+
+> [!NOTE]
+> Le script de permissions ajoute `INSERT` aux droits déjà présents. Il ne révoque aucun ancien privilège.
 
 ## Encodage
 

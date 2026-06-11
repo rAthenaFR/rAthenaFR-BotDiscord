@@ -54,27 +54,36 @@ RATHENAFR_DB_PASSWORD=...
 
 ## Préparer SQL
 
-Édite le nom de base, l’hôte SQL et le mot de passe dans le script avant exécution :
+Le bot complète une base rAthena existante. Il ne crée pas les tables natives comme `login`, `char`, `guild`, `mob_db` ou `mvplog`.
 
-```bash
-mariadb -u root -p ragnarok < sql/create-readonly-user.sql
-```
-
-Les scripts optionnels dépendent des fonctionnalités activées :
+Installe d’abord les structures et données nécessaires :
 
 ```bash
 mariadb -u root -p ragnarok < sql/rathenafr_item_search.sql
 mariadb -u root -p ragnarok < sql/rathenafr_mvp_regular_spawn.sql
-mariadb -u root -p ragnarok < sql/sql_updates.sql
+mariadb -u root -p ragnarok < sql/rathenafr_mvp_data.sql
 mariadb -u root -p ragnarok < sql/discord_gmmsg_queue.sql
+mariadb -u root -p ragnarok < sql/sql_updates.sql
+```
+
+Édite ensuite le nom de base, l’hôte SQL et le mot de passe d’exemple dans les scripts de permissions, puis applique uniquement les droits requis :
+
+```bash
+mariadb -u root -p ragnarok < sql/create-readonly-user.sql
 mariadb -u root -p ragnarok < sql/create-gmmsg-queue-user.sql
 mariadb -u root -p ragnarok < sql/create-account-management-user.sql
 ```
 
 > [!IMPORTANT]
-> `rathenafr_mvp_regular_spawn.sql` crée la table support et la vue de `/mvp list`, mais ne peuple pas `rathenafr_mvp_list`.
+> `rathenafr_mvp_data.sql`, `discord_gmmsg_queue.sql` et `sql_updates.sql` sont nécessaires uniquement aux fonctions qui utilisent leurs objets. Le catalogue d’items reste requis pour `/item info` et pour les noms de récompenses de `/mvp last`.
 
-Consulte [Base de données](DATABASE_FR.md) avant d’accorder des droits d’écriture.
+Vérifie enfin l’installation sans modifier la base :
+
+```bash
+mariadb -u root -p ragnarok < sql/verify-installation.sql
+```
+
+Consulte [`sql/README_FR.md`](../sql/README_FR.md) pour l’ordre détaillé et [Base de données](DATABASE_FR.md) avant d’accorder des droits d’écriture.
 
 ## Valider et lancer
 

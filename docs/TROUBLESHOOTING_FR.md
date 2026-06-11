@@ -59,10 +59,20 @@ Dans Docker, `127.0.0.1` pointe vers le conteneur du bot.
 
 Utilise `/db health` avec un rôle Owner. Selon la fonctionnalité :
 
-- réexécute `rathenafr_item_search.sql` pour `/item info` ;
-- installe et peuple la vue MVP pour `/mvp list` ;
+- réexécute `rathenafr_item_search.sql` pour recréer `rathenafr_item_list` et la vue `rathenafr_item_search` ;
+- exécute `rathenafr_mvp_regular_spawn.sql`, puis `rathenafr_mvp_data.sql` pour `/mvp list` ;
+- exécute `discord_gmmsg_queue.sql` pour créer ou compléter la file `/gmmsg` ;
 - active les logs rAthena nécessaires aux commandes staff ;
 - installe `sql_updates.sql` seulement si cette table de compatibilité est souhaitée.
+
+Contrôle ensuite tous les objets fournis par le projet :
+
+```bash
+mariadb -u root -p ragnarok < sql/verify-installation.sql
+```
+
+> [!NOTE]
+> Le vérificateur signale les objets attendus par les scripts du bot. Il ne valide pas toutes les tables natives de rAthena.
 
 ## Une commande staff est refusée
 
@@ -104,6 +114,17 @@ Si les accents sont incorrects, contrôle `VARBINARY(180)` et `RATHENAFR_GMMSG_E
 
 > [!IMPORTANT]
 > Un statut `done` signifie que le script NPC a marqué la ligne comme traitée. Il ne garantit pas que le client affiche l’annonce si les flags ou la map sont incorrects.
+
+Si la migration SQL refuse de modifier la colonne `message`, recherche d’abord les anciennes lignes de plus de 180 octets :
+
+```sql
+SELECT `id`, OCTET_LENGTH(`message`) AS `message_bytes`
+FROM `discord_gmmsg_queue`
+WHERE OCTET_LENGTH(`message`) > 180;
+```
+
+> [!WARNING]
+> N’augmente pas automatiquement la limite et ne tronque pas les messages en production. Archive ou corrige les lignes concernées, puis relance `discord_gmmsg_queue.sql`.
 
 ## Docker ne démarre pas
 
