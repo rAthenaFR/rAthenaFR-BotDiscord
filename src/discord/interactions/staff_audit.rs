@@ -48,7 +48,8 @@ impl<'a> StaffAuditLogger<'a> {
             return;
         };
 
-        let embed = embeds::gmmsg_staff_log_embed(
+        let embed = embeds::gmmsg_staff_log_embed_l10n(
+            crate::i18n::BotLocale::DEFAULT,
             entry.status,
             self.command.user.id.get(),
             entry.action,
@@ -70,7 +71,8 @@ impl<'a> StaffAuditLogger<'a> {
             return;
         };
 
-        let embed = embeds::account_manage_staff_log_embed(
+        let embed = embeds::account_manage_staff_log_embed_l10n(
+            crate::i18n::BotLocale::DEFAULT,
             entry.status,
             self.command.user.id.get(),
             entry.action,

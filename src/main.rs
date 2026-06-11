@@ -2,6 +2,8 @@ mod app;
 mod cache;
 mod config;
 mod discord;
+#[allow(dead_code)]
+mod i18n;
 mod infra;
 mod rathenafr;
 

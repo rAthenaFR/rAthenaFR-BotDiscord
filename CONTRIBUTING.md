@@ -2,17 +2,17 @@
 
 Merci d’aider à améliorer rAthenaFR Discord Bot.
 
-Commence par lire `docs/CONTRIBUTOR_GUIDE_FR.md`. Le guide explique les modes d’exécution, la structure des modules, le flux des commandes et les règles de sécurité.
+Commence par lire `docs/DEVELOPMENT_FR.md`. Le guide explique le workflow, la structure des commandes, l’i18n, les tests et la publication.
 
 Lis aussi `CODE_OF_CONDUCT.md` avant de participer aux issues, pull requests, reviews ou discussions.
 
 ## Avant de commencer
 
-Le projet est volontairement en lecture seule. Les nouvelles commandes ne doivent pas écrire dans la base rAthenaFR, sauf si une couche d’écriture séparée, auditée et explicitement documentée est ajoutée plus tard.
+Le projet est en lecture seule par défaut. Les nouvelles écritures doivent être désactivées par défaut, protégées, auditées et explicitement documentées.
 
 Règles principales :
 
-- garder le SQL en lecture seule ;
+- garder le SQL en lecture seule par défaut ;
 - protéger les données privées des comptes ;
 - réserver les commandes sensibles au staff ;
 - utiliser `.env` ou les variables d’environnement pour la configuration ;
@@ -22,9 +22,9 @@ Règles principales :
 
 ```bash
 cargo fmt --all
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all-features
-cargo check --all-features
+cargo check --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
 ```
 
 Ou :
@@ -51,7 +51,7 @@ cargo run -- --deploy
 - `docs/COMMANDS_FR.md`
 - `docs/CONFIGURATION_FR.md`
 - `docs/DATABASE_FR.md`
-- `docs/CONTRIBUTOR_GUIDE_FR.md`
+- `docs/DEVELOPMENT_FR.md`
 - `.env.example`
 - `.env.docker.example`
 - `CHANGELOG.md`

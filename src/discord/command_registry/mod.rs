@@ -1,3 +1,4 @@
+mod localization;
 mod public;
 mod staff;
 

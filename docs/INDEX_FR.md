@@ -1,38 +1,34 @@
-# Index de la documentation
+# Documentation rAthenaFR Discord Bot
 
-Documentation française de rAthenaFR Discord Bot pour le projet rAthena.
+Cette documentation couvre l’installation, l’exploitation et le développement du bot.
 
 > [!NOTE]
-> Cet index est le point d’entrée recommandé pour naviguer dans `docs/`. Le `README.md` racine reste volontairement séparé.
+> Les fichiers `.env.example` et `.env.docker.example` restent les références exhaustives pour les variables disponibles.
 
-## Démarrage
+## Installer et exploiter
 
-- [Installation](INSTALLATION_FR.md) : installation locale et premier lancement.
-- [Configuration](CONFIGURATION_FR.md) : variables d’environnement prises en charge.
-- [Docker](DOCKER_FR.md) : exécution avec Docker Compose.
-- [Mise en ligne](DEPLOYMENT_FR.md) : déploiement sur serveur ou VPS.
+- [Installation](INSTALLATION_FR.md) : prérequis, préparation SQL et premier lancement.
+- [Configuration](CONFIGURATION_FR.md) : variables d’environnement et valeurs par défaut.
+- [Commandes Discord](COMMANDS_FR.md) : commandes publiques, staff et permissions.
+- [Base de données](DATABASE_FR.md) : scripts SQL, tables et droits minimaux.
+- [Gestion des comptes](ACCOUNT_MANAGEMENT_FR.md) : création, modification, ban et désactivation forte.
+- [Bridge GMMSG](GMMSG_BRIDGE_FR.md) : file SQL et script NPC rAthena.
+- [Déploiement](DEPLOYMENT_FR.md) : Docker Compose, serveur distant et mise à jour.
+- [Dépannage](TROUBLESHOOTING_FR.md) : problèmes fréquents et vérifications.
 
-## Utilisation
+## Maintenir le projet
 
-- [Commandes Discord](COMMANDS_FR.md) : liste des commandes publiques et staff.
-- [Bridge GMMSG SQL Queue](GMMSG_BRIDGE_FR.md) : envoi `/gmmsg`, file SQL, encodage Windows-1252 et script NPC rAthena.
-- [Gestion de comptes](ACCOUNT_MANAGEMENT_FR.md) : liste GM, création, édition et suppression complète de comptes.
-- [Base de données](DATABASE_FR.md) : tables utilisées et permissions SQL.
-- [Dépannage](TROUBLESHOOTING_FR.md) : erreurs courantes et corrections.
+- [Architecture](ARCHITECTURE_FR.md) : organisation du code et flux d’une interaction.
+- [Développement](DEVELOPMENT_FR.md) : workflow, tests, contribution et publication.
+- [Sécurité](SECURITY_FR.md) : secrets, rôles, SQL et journalisation.
+- [Scripts Windows](../scripts/README_FR.md) : raccourcis PowerShell et CMD.
 
-## Maintenance
+## Projet
 
-- [Développement](DEVELOPMENT_FR.md) : commandes locales et règles de contribution.
-- [Scripts Windows](../scripts/README_FR.md) : raccourcis PowerShell et CMD pour Cargo et Docker Compose.
-- [Guide contributeur](CONTRIBUTOR_GUIDE_FR.md) : ajout propre d’une commande.
-- [Architecture](ARCHITECTURE_FR.md) : organisation du code.
-- [Sécurité](SECURITY_FR.md) : règles de sécurité, secrets et permissions.
-- [Publication](RELEASE_FR.md) : checklist de release.
-
-## Annexes
-
-- [Migration des variables d’environnement](ENV_MIGRATION_FR.md).
-- [Windows App Control](WINDOWS_APP_CONTROL_FR.md).
+- [Crédits](CREDITS_FR.md) : attribution, licence et projet d’origine.
 
 > [!TIP]
-> Après tout changement de nom, description ou option de commande slash, redéploie les commandes Discord avec `cargo run -- --deploy` ou l’équivalent Docker.
+> Après une modification du nom, des options ou de la structure d’une commande slash, redéploie le registre avec `cargo run -- --deploy`.
+
+> [!IMPORTANT]
+> Un changement d’embed ou de traduction runtime demande seulement un redémarrage du bot. Un changement du registre Discord demande un redéploiement.

@@ -1,163 +1,100 @@
 # Base de données
 
-Le bot doit fonctionner avec un utilisateur SQL en lecture seule par défaut. Les écritures SQL sont limitées aux fonctionnalités explicitement activées : `/createaccount`, `/staff account-manage` et `/gmmsg` en mode `sql_queue`.
+Le bot cible MariaDB/MySQL et conserve `RAthenaFrDatabase` comme API d’accès SQL. La lecture seule est le mode normal.
 
 ## Scripts fournis
 
-Le dossier `sql/` contient les scripts d’installation et de droits à exécuter manuellement avec un utilisateur administrateur MariaDB/MySQL :
-
-| Script | Usage |
+| Script | Rôle |
 |---|---|
-| `sql/create-readonly-user.sql` | Crée l’utilisateur bot avec `SELECT` sur la base rAthena. |
-| `sql/create-account-management-user.sql` | Ajoute les droits nécessaires à `/createaccount` et `/staff account-manage`. |
-| `sql/create-gmmsg-queue-user.sql` | Ajoute le droit `INSERT` sur `discord_gmmsg_queue` pour `/gmmsg` en mode `sql_queue`. |
-| `sql/discord_gmmsg_queue.sql` | Crée ou met à jour la table `discord_gmmsg_queue`. |
-| `sql/rathenafr_item_search.sql` | Crée et rafraîchit `rathenafr_item_search`, source SQL de `/item info`. |
-| `sql/rathenafr_mvp_regular_spawn.sql` | Crée `rathenafr_mvp_list` et la vue `rathenafr_mvp_regular_spawn` utilisée par `/mvp list`. |
-| `sql/sql_updates.sql` | Crée la table de compatibilité lue par `/db last-update` lorsque rAthena ne la fournit pas. |
+| `create-readonly-user.sql` | Crée l’utilisateur avec `SELECT` sur la base. |
+| `create-account-management-user.sql` | Ajoute `INSERT` et `UPDATE` sur `login`. |
+| `create-gmmsg-queue-user.sql` | Ajoute `INSERT` sur `discord_gmmsg_queue`. |
+| `discord_gmmsg_queue.sql` | Crée ou migre la file GMMSG. |
+| `rathenafr_item_search.sql` | Crée et rafraîchit la table de recherche d’items. |
+| `rathenafr_mvp_regular_spawn.sql` | Crée la table support et la vue des MVP réguliers. |
+| `sql_updates.sql` | Crée la table optionnelle lue par `/db last-update`. |
 
-## Permissions recommandées
+> [!WARNING]
+> Les scripts contiennent un nom de base, un hôte SQL et un mot de passe d’exemple. Relis-les avant exécution.
+
+## Droits minimaux
+
+Mode normal :
 
 ```sql
 GRANT SELECT ON `ragnarok`.* TO 'rathenafr_bot'@'%';
 ```
 
-> [!CAUTION]
-> **Droits SQL sensibles**
->
-> Ne donne pas `DELETE`, `DROP`, `ALTER` ou `CREATE` à l’utilisateur d’exécution du bot.
-> `UPDATE` sur `login` est nécessaire uniquement si `/staff account-manage` est activée.
-
-## Exception createaccount
-
-`/createaccount` est conservée. Si `RATHENAFR_ACCOUNT_CREATION_ENABLED=true`, elle peut écrire dans `login` comme avant.
-
-Permission minimale additionnelle :
+Écritures optionnelles :
 
 ```sql
 GRANT INSERT ON `ragnarok`.`login` TO 'rathenafr_bot'@'%';
-```
-
-## Exception account-management staff
-
-Si `RATHENAFR_ACCOUNT_MANAGE_ENABLED=true`, `/staff account-manage` modifie uniquement des champs ciblés de `login`.
-
-Permissions minimales additionnelles :
-
-```sql
-GRANT SELECT ON `ragnarok`.`login` TO 'rathenafr_bot'@'%';
-GRANT SELECT ON `ragnarok`.`char` TO 'rathenafr_bot'@'%';
 GRANT UPDATE ON `ragnarok`.`login` TO 'rathenafr_bot'@'%';
-```
-
-## Exception GMMSG SQL Queue
-
-Si `RATHENAFR_GMMSG_MODE=sql_queue`, `/gmmsg` ajoute des messages dans la file SQL `discord_gmmsg_queue`.
-
-Permission minimale additionnelle :
-
-```sql
 GRANT INSERT ON `ragnarok`.`discord_gmmsg_queue` TO 'rathenafr_bot'@'%';
 ```
 
-La table attend une colonne `message` en `VARBINARY(180)` afin de stocker les octets Windows-1252 affichés correctement par le client Ragnarok Online.
-
-> [!IMPORTANT]
-> Le bot insère uniquement une ligne `pending`. Le script NPC rAthena doit lire la file, annoncer le message en jeu et passer le statut à `done`.
-
-> [!WARNING]
-> Ne donne pas `UPDATE`, `DELETE`, `DROP`, `ALTER` ou `CREATE` au bot pour gérer la file GMMSG. Ces droits relèvent de l’installation ou de la maintenance SQL, pas de l’exécution normale.
-
-## Items
-
-`/item info` lit la table `rathenafr_item_search`. Le script `sql/rathenafr_item_search.sql` crée la table avec les colonnes attendues par le bot et la rafraîchit depuis `item_db` et/ou `item_db_re` quand ces tables existent.
-
-La table expose les colonnes suivantes :
-
-- `item_id`
-- `item_name`
-- `aegis_name`
-- `item_type`
-- `item_subtype`
-- `slots`
-- `buy`
-- `sell`
-- `weight`
-- `attack`
-- `magic_attack`
-- `defense`
-- `equip_level_min`
-
-## MVP réguliers
-
-`/mvp list` lit la vue `rathenafr_mvp_regular_spawn`. Le script `sql/rathenafr_mvp_regular_spawn.sql` crée la table support `rathenafr_mvp_list` et la vue filtrée sur les spawns réguliers.
-
-La table `rathenafr_mvp_list` doit ensuite être peuplée par l’import MVP Athena validé pour le serveur. La vue expose les colonnes attendues par le bot :
-
-- `monster_id`
-- `monster_name`
-- `aegis_name`
-- `map_name`
-- `respawn_minutes`
-- `respawn_variance_minutes`
-- `source`
+> [!CAUTION]
+> N’accorde pas `DELETE`, `DROP`, `ALTER` ou `CREATE` à l’utilisateur d’exécution. Les migrations sont exécutées séparément avec un compte administrateur.
 
 ## Tables principales
 
-Les commandes lisent les tables seulement si elles existent :
+Le bot détecte les tables avant les commandes qui en dépendent. Les principales familles sont :
 
-- `login`
-- `char`
-- `guild`
-- `guild_member`
-- `guild_position`
-- `guild_skill`
-- `guild_castle`
-- `guild_storage`
-- `party`
-- `inventory`
-- `cart_inventory`
-- `storage`
-- `mail`
-- `mail_attachments`
-- `skill`
-- `quest`
-- `pet`
-- `homunculus`
-- `char_reg_num`
-- `char_reg_str`
-- `acc_reg_num`
-- `acc_reg_str`
+| Fonction | Tables |
+|---|---|
+| Comptes et personnages | `login`, `char` |
+| Guildes et WoE | `guild`, `guild_member`, `guild_position`, `guild_skill`, `guild_castle`, `guild_storage` |
+| Inventaires | `inventory`, `cart_inventory`, `storage` |
+| Quêtes et variables | `quest`, `char_reg_num`, `char_reg_str`, `acc_reg_num`, `acc_reg_str` |
+| Items et monstres | `rathenafr_item_search`, `item_db`/`item_db_re`, `mob_db`/`mob_db_re`, `mob_skill_db` |
+| Marché | `vendings`, `vending_items`, `buyingstores`, `buyingstore_items` |
+| Logs | `mvplog`, `picklog`, `zenylog`, `loginlog`, `chatlog`, `atcommandlog`, `branchlog`, `charlog` |
 
-## Items, monstres, marché et logs
-
-Tables item/mob configurables :
-
-- `item_db` ou `item_db_re`
-- `mob_db` ou `mob_db_re`
-
-Tables optionnelles :
-
-- `rathenafr_mvp_list`
-- `rathenafr_item_search`
-- `rathenafr_mvp_regular_spawn`
-- `mob_skill_db`
-- `mvplog`
-- `picklog`
-- `zenylog`
-- `loginlog`
-- `chatlog`
-- `atcommandlog`
-- `branchlog`
-- `charlog`
-- `vendings`
-- `vending_items`
-- `buyingstores`
-- `buyingstore_items`
-- `sql_updates`
+Des tables rAthena supplémentaires sont détectées pour les diagnostics, notamment `party`, `pet`, `homunculus`, `mail`, `mail_attachments`, `skill` et `sql_updates`.
 
 > [!NOTE]
-> **Tables absentes**
->
-> Certaines installations rAthena ne possèdent pas toutes ces tables.
-> `/db health` affiche les tables présentes, les tables manquantes et les logs détectés.
+> Une installation rAthena peut ne pas fournir tous les logs. Les commandes concernées restent disponibles mais retournent une erreur de table manquante ou une liste vide.
+
+## Recherche d’items
+
+`/item info` s’appuie sur `rathenafr_item_search`. Le script dédié consolide les données disponibles depuis `item_db` et `item_db_re`.
+
+Après une mise à jour importante des tables d’items, réexécute :
+
+```bash
+mariadb -u root -p ragnarok < sql/rathenafr_item_search.sql
+```
+
+## MVP réguliers
+
+`/mvp list` lit la vue `rathenafr_mvp_regular_spawn`, construite depuis `rathenafr_mvp_list`.
+
+> [!IMPORTANT]
+> Le script SQL ne fournit pas les données de spawn. `rathenafr_mvp_list` doit être alimentée avec une source adaptée à la configuration de ton serveur.
+
+`/mvp last` et `/mvp top` lisent `mvplog` lorsqu’elle existe.
+
+## GMMSG
+
+La file attend :
+
+```text
+discord_gmmsg_queue.message = VARBINARY(180)
+```
+
+Le bot insère uniquement les lignes `pending`. Le script NPC rAthena est responsable du traitement et des mises à jour `done`/`failed`.
+
+Consulte [Bridge GMMSG](GMMSG_BRIDGE_FR.md).
+
+## Diagnostic
+
+Les commandes Owner suivantes aident à comparer le schéma attendu au schéma réel :
+
+- `/db health`
+- `/db tables`
+- `/db count`
+- `/db logs-size`
+- `/db last-update`
+
+> [!TIP]
+> Commence par `/db health` après une migration rAthena ou l’activation d’une nouvelle fonctionnalité.

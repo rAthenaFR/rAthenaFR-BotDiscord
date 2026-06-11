@@ -1,33 +1,31 @@
 # Gestion des comptes
 
-Cette version conserve `/createaccount` et ajoute une commande staff sensible sous
-`/staff account-manage`. La gestion staff est désactivée par défaut et doit être
-activée explicitement par configuration.
-
-## Commandes disponibles
-
-| Commande | Écriture SQL | Accès Discord |
-|---|---:|---|
-| `/createaccount username: password: sex: birthdate: email:` | `INSERT` dans `login` si la commande est activée | Publique, désactivée par défaut |
-| `/staff account-manage edit account: field: value: reason:` | `UPDATE` ciblé dans `login` | Staff, Admin par défaut |
-| `/staff account-manage ban account: until: reason:` | `UPDATE` ciblé dans `login` | Staff, Admin par défaut |
-| `/staff account-manage unban account: reason:` | `UPDATE` ciblé dans `login` | Staff, Admin par défaut |
-| `/staff account-manage delete account_id: confirm: reason:` | Désactivation forte dans `login`, sans suppression physique | Staff, Owner par défaut, désactivée par défaut |
-
-`createaccount` n’a pas été renommée. Son comportement reste celui du projet existant :
-
-- `RATHENAFR_ACCOUNT_CREATION_ENABLED=false` refuse la création.
-- `RATHENAFR_ACCOUNT_PASSWORD_MODE=plain` ou `md5` contrôle le mode de mot de passe.
-- Le mot de passe n’est jamais réaffiché par le bot.
-- L’e-mail reste une donnée sensible et ne doit pas être exposé en public, en dehors de la réponse de création prévue.
+Le projet fournit `/createaccount` et le groupe staff `/staff account-manage`. Toutes ces écritures sont désactivées par défaut.
 
 > [!WARNING]
-> **Données sensibles**
->
-> Même si `/createaccount` est publique, le mot de passe transite par Discord au moment de la commande.
-> Active cette fonctionnalité uniquement si ce flux est accepté pour ton serveur.
+> Un mot de passe fourni à `/createaccount` transite par Discord. N’active cette commande que si ce risque est accepté et documenté pour ta communauté.
 
-## Configuration staff
+## Création publique
+
+```env
+RATHENAFR_ACCOUNT_CREATION_ENABLED=false
+RATHENAFR_ACCOUNT_PASSWORD_MODE=plain
+```
+
+`RATHENAFR_ACCOUNT_PASSWORD_MODE` accepte `plain` ou `md5` selon le schéma rAthena ciblé.
+
+La commande :
+
+```text
+/createaccount username: password: sex: birthdate: [email]
+```
+
+valide les longueurs et formats, insère le compte dans `login` et ne réaffiche jamais le mot de passe.
+
+> [!CAUTION]
+> Vérifie le mode de mot de passe attendu par ton serveur avant d’activer la commande. Un mauvais mode peut créer des comptes inutilisables.
+
+## Gestion staff
 
 ```env
 RATHENAFR_ACCOUNT_MANAGE_ENABLED=false
@@ -36,17 +34,18 @@ RATHENAFR_ACCOUNT_MANAGE_MIN_ROLE=admin
 RATHENAFR_ACCOUNT_DELETE_MIN_ROLE=owner
 ```
 
-`RATHENAFR_ACCOUNT_MANAGE_MIN_ROLE` protège `edit`, `ban` et `unban`.
-`RATHENAFR_ACCOUNT_DELETE_MIN_ROLE` protège `delete`.
+| Commande | Effet |
+|---|---|
+| `/staff account-manage edit account: field: value: [reason]` | Met à jour un champ autorisé. |
+| `/staff account-manage ban account: [until] [reason]` | Bloque le compte et définit éventuellement une fin UNIX. |
+| `/staff account-manage unban account: [reason]` | Remet `state` et `unban_time` à zéro. |
+| `/staff account-manage delete account_id: confirm: [reason]` | Applique une désactivation forte. |
 
-Les rôles acceptés sont `helper`, `moderator`, `gm`, `admin` et `owner`.
-Par défaut, `delete` demande Owner et reste désactivée même si la commande
-globale de gestion est activée.
+`edit`, `ban` et `unban` utilisent `RATHENAFR_ACCOUNT_MANAGE_MIN_ROLE`. `delete` utilise `RATHENAFR_ACCOUNT_DELETE_MIN_ROLE` et sa propre option d’activation.
 
 ## Champs modifiables
 
-`edit` accepte uniquement ces colonnes de `login`, si elles existent dans le
-schéma ciblé :
+`edit` autorise uniquement :
 
 - `group_id`
 - `state`
@@ -55,54 +54,44 @@ schéma ciblé :
 - `logincount`
 - `sex`
 
-Les champs suivants sont toujours refusés : `account_id`, `userid`,
-`user_pass`, `password`, `hash`, `email`, `pincode`, `last_ip` et `lastlogin`.
+Les identifiants, mots de passe, hashes, PIN, e-mail, dernière IP et dernier login ne peuvent pas être modifiés par cette commande.
 
-Le bot ne réaffiche pas de secret de compte. Les réponses et logs n'incluent
-pas `user_pass`, hash, PIN, IP privée ou e-mail privé.
+> [!IMPORTANT]
+> Les recherches de compte sont exactes : `account_id` positif ou `userid` exact. Le bot n’effectue pas de recherche partielle avant une écriture.
 
-## Ban et unban
+## Désactivation forte
 
-`ban` identifie le compte par `account_id` exact ou `userid` exact. Si `state`
-existe, le compte est passé en état bloqué. Si `unban_time` existe, l'option
-`until` permet de définir un timestamp UNIX de fin de ban.
+`delete` :
 
-`unban` remet `state` à `0` et `unban_time` à `0` quand ces colonnes existent.
+- exige un `account_id` exact ;
+- exige `confirm:SUPPRIMER` ;
+- ne supprime aucune ligne SQL ;
+- applique un état bloqué et retire les privilèges du compte ;
+- conserve les relations avec les personnages, guildes, storages et logs.
 
-Chaque action réussie est journalisée dans `RATHENAFR_STAFF_LOG_CHANNEL_ID` si
-le salon est configuré.
+Une suppression physique doit rester une opération administrative externe, préparée avec sauvegarde et vérification des dépendances.
 
-## Delete
+## Droits SQL
 
-`delete` est volontairement conservée comme désactivation forte :
-
-- elle exige `account_id` exact ;
-- elle exige `confirm="SUPPRIMER"` exactement ;
-- elle ne supprime pas physiquement la ligne `login` ;
-- elle applique `state = 5`, `group_id = 0`, `expiration_time = 0` et remet
-  `unban_time = 0` si la colonne existe.
-
-Cette approche évite de casser les dépendances rAthena liées à `char`,
-`storage`, guild ownership, historiques et logs. Une suppression physique d'un
-compte rAthena peut rompre l'intégrité des données et doit être réalisée hors
-bot avec une procédure SQL dédiée et vérifiée.
-
-## Permissions SQL
-
-Sans création ni gestion staff, `SELECT` suffit.
-
-Le script fourni `sql/create-account-management-user.sql` regroupe les droits nécessaires si tu veux activer `/createaccount` et `/staff account-manage`.
-
-Pour activer `/createaccount`, ajoute uniquement :
+Création uniquement :
 
 ```sql
 GRANT INSERT ON `ragnarok`.`login` TO 'rathenafr_bot'@'%';
 ```
 
-Pour activer `/staff account-manage`, ajoute les droits minimaux nécessaires :
+Gestion staff :
 
 ```sql
-GRANT SELECT ON `ragnarok`.`login` TO 'rathenafr_bot'@'%';
-GRANT SELECT ON `ragnarok`.`char` TO 'rathenafr_bot'@'%';
 GRANT UPDATE ON `ragnarok`.`login` TO 'rathenafr_bot'@'%';
 ```
+
+Le droit `SELECT` normal reste nécessaire pour `login`, `char` et les autres lectures.
+
+Le script `sql/create-account-management-user.sql` accorde le jeu combiné `SELECT`, `INSERT login` et `UPDATE login`.
+
+> [!TIP]
+> Pour le principe du moindre privilège, accorde manuellement seulement `INSERT` ou `UPDATE` si une seule des deux fonctionnalités est activée.
+
+## Audit
+
+Les actions et refus sont envoyés dans `RATHENAFR_STAFF_LOG_CHANNEL_ID` lorsqu’il est configuré. Les réponses sont éphémères et les secrets ne sont pas inclus.

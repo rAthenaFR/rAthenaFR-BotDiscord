@@ -1,48 +1,66 @@
 # Installation
 
-Documentation française de rAthenaFR Discord Bot pour le projet rAthena.
-
-> [!NOTE]
-> Pour une installation sur serveur, consulte plutôt `DEPLOYMENT_FR.md`.
-
 ## Prérequis
 
-- Rust stable avec Cargo.
-- MariaDB ou MySQL accessible par le bot.
-- Une base compatible rAthena déjà importée.
-- Un bot Discord avec token, client ID et guild ID.
+- Rust stable avec les composants `rustfmt` et `clippy`.
+- MariaDB ou MySQL avec une base rAthena existante.
+- Une application Discord avec un bot, un token et les IDs application/serveur.
+- Git et, pour l’installation conteneurisée, Docker Compose.
+
+> [!NOTE]
+> Le bot ne crée pas la base rAthena. Il se connecte à une installation existante.
+
+## Préparer Discord
+
+Dans le portail Discord Developer :
+
+1. crée ou sélectionne une application ;
+2. ajoute un bot ;
+3. récupère le token ;
+4. invite le bot avec les scopes `bot` et `applications.commands` ;
+5. récupère l’ID de l’application et l’ID du serveur Discord cible.
+
+Le bot utilise des interactions slash et ne demande aucun intent privilégié.
 
 ## Installation locale
+
+Clone le dépôt, puis crée le fichier d’environnement :
 
 ```bash
 cp .env.example .env
 ```
 
-Renseigne les variables obligatoires :
+Sous PowerShell :
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Renseigne au minimum :
 
 ```env
-DISCORD_TOKEN=replace_me
-DISCORD_CLIENT_ID=replace_me
-DISCORD_GUILD_ID=replace_me
+DISCORD_TOKEN=...
+DISCORD_CLIENT_ID=...
+DISCORD_GUILD_ID=...
 RATHENAFR_DB_HOST=127.0.0.1
 RATHENAFR_DB_PORT=3306
 RATHENAFR_DB_NAME=ragnarok
 RATHENAFR_DB_USER=rathenafr_bot
-RATHENAFR_DB_PASSWORD=replace_me
+RATHENAFR_DB_PASSWORD=...
 ```
 
 > [!WARNING]
-> Remplace toutes les valeurs `replace_me` avant de lancer le bot.
+> Ne laisse aucune valeur d’exemple et ne commit jamais le fichier `.env`.
 
-## Préparation SQL
+## Préparer SQL
 
-Crée l’utilisateur SQL du bot avec le script adapté :
+Édite le nom de base, l’hôte SQL et le mot de passe dans le script avant exécution :
 
 ```bash
 mariadb -u root -p ragnarok < sql/create-readonly-user.sql
 ```
 
-Installe les scripts optionnels selon les fonctionnalités activées :
+Les scripts optionnels dépendent des fonctionnalités activées :
 
 ```bash
 mariadb -u root -p ragnarok < sql/rathenafr_item_search.sql
@@ -54,53 +72,51 @@ mariadb -u root -p ragnarok < sql/create-account-management-user.sql
 ```
 
 > [!IMPORTANT]
-> `sql/rathenafr_item_search.sql` crée et rafraîchit la table utilisée par `/item info` depuis `item_db` et/ou `item_db_re`.
+> `rathenafr_mvp_regular_spawn.sql` crée la table support et la vue de `/mvp list`, mais ne peuple pas `rathenafr_mvp_list`.
 
-> [!IMPORTANT]
-> `sql/rathenafr_mvp_regular_spawn.sql` crée la table support et la vue de `/mvp list`, mais ne peuple pas `rathenafr_mvp_list`. Importe ensuite les données MVP Athena validées pour ton serveur.
+Consulte [Base de données](DATABASE_FR.md) avant d’accorder des droits d’écriture.
 
-Déploie les commandes slash :
+## Valider et lancer
+
+```bash
+cargo fmt --all
+cargo check --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+```
+
+Déploie ensuite les commandes dans le serveur Discord configuré :
 
 ```bash
 cargo run -- --deploy
 ```
 
-Lance le bot :
+Puis démarre le bot :
 
 ```bash
 cargo run
 ```
 
+> [!TIP]
+> Sous Windows, `scripts\dev-deploy.ps1` et `scripts\dev-run.ps1` utilisent un dossier Cargo externe pour éviter certains blocages Windows App Control.
+
 ## Installation Docker
 
 ```bash
 cp .env.docker.example .env
+docker network create rathena-network
 docker compose up -d --build
 ```
 
-Le service attend le réseau Docker externe `athena-network`.
+Le réseau `rathena-network` est externe. La commande de création peut signaler qu’il existe déjà, ce qui est sans conséquence.
 
-> [!TIP]
-> Crée le réseau avec `docker network create athena-network` s’il n’existe pas encore.
+Déploie les commandes slash depuis l’image :
 
-## Mise en ligne
-
-Pour un VPS, un serveur dédié ou une machine distante, utilise la procédure dédiée :
-
-```text
-docs/DEPLOYMENT_FR.md
+```bash
+docker compose run --rm rathenafr-discord-bot --deploy
 ```
 
-Le principe recommandé reste Docker, avec une base MariaDB/MySQL joignable par réseau privé ou réseau Docker, jamais exposée publiquement.
+> [!CAUTION]
+> Dans un conteneur, `127.0.0.1` désigne le conteneur du bot. Utilise le nom du service MariaDB, une IP privée ou un DNS accessible depuis `rathena-network`.
 
-> [!IMPORTANT]
-> Les commandes de compte nécessitent des permissions SQL supplémentaires. Consulte `ACCOUNT_MANAGEMENT_FR.md` avant de les activer.
-
-## Option `/gmmsg` en jeu
-
-Pour envoyer `/gmmsg` en jeu, configure `RATHENAFR_GMMSG_MODE=sql_queue`, installe la table `discord_gmmsg_queue`, puis charge le script NPC rAthena correspondant dans `npc/scripts_custom.conf`.
-
-> [!IMPORTANT]
-> La colonne `discord_gmmsg_queue.message` doit être en `VARBINARY(180)` pour conserver les octets Windows-1252 nécessaires aux accents français côté client Ragnarok Online.
-
-Consulte [Bridge GMMSG SQL Queue](GMMSG_BRIDGE_FR.md) pour la procédure complète.
+Pour une installation durable sur serveur, continue avec [Déploiement](DEPLOYMENT_FR.md).

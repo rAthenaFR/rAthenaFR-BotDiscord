@@ -14,17 +14,17 @@
 
 Bot Discord en Rust pour les communautés Ragnarok Online utilisant une base de données compatible rAthena.
 
-Le bot expose des commandes slash en lecture seule pour consulter l’état du serveur, les personnages connectés, les guildes, les classements, les châteaux, les quêtes, le marché et certaines informations réservées au staff.
+Le bot expose principalement des commandes slash en lecture seule pour consulter l’état du serveur, les personnages connectés, les guildes, les classements, les châteaux, les quêtes, le marché et certaines informations réservées au staff.
 
 ## Objectif
 
-rAthenaFR Discord Bot est un compagnon Discord pour le projet rAthena. Il ne remplace pas rAthena, FluxCP ou un panel d’administration. Il lit uniquement la base SQL et affiche des informations utiles dans Discord.
+rAthenaFR Discord Bot est un compagnon Discord pour le projet rAthena. Il ne remplace pas rAthena, FluxCP ou un panel d’administration. Il lit la base SQL et limite les écritures aux fonctionnalités explicitement activées et documentées.
 
 ## Principes
 
 - accès SQL en lecture seule par défaut ;
 - aucune modification de personnage, objet ou guilde ;
-- création/suppression de compte uniquement si les commandes dédiées sont activées ;
+- création et gestion de compte uniquement si les commandes dédiées sont activées ;
 - commandes staff protégées par rôles Discord ;
 - réponses staff éphémères quand Discord le permet ;
 - configuration via `.env` ;
@@ -42,21 +42,18 @@ rAthenaFR Discord Bot est un compagnon Discord pour le projet rAthena. Il ne rem
 
 | Document | Description |
 |---|---|
-| [`docs/ACCOUNT_MANAGEMENT_FR.md`](docs/ACCOUNT_MANAGEMENT_FR.md) | Liste GM, création, édition et suppression complète de comptes. |
-| [`docs/ARCHITECTURE_FR.md`](docs/ARCHITECTURE_FR.md) | Architecture interne. |
-| [`docs/COMMANDS_FR.md`](docs/COMMANDS_FR.md) | Référence complète des commandes. |
-| [`docs/CONFIGURATION_FR.md`](docs/CONFIGURATION_FR.md) | Variables d'environnement et configuration d'exécution. |
-| [`docs/CONTRIBUTOR_GUIDE_FR.md`](docs/CONTRIBUTOR_GUIDE_FR.md) | Guide pour ajouter ou modifier des commandes. |
-| [`docs/DATABASE_FR.md`](docs/DATABASE_FR.md) | Tables utilisées et permissions SQL. |
-| [`docs/DEPLOYMENT_FR.md`](docs/DEPLOYMENT_FR.md) | Mise en ligne sur serveur distant ou VPS. |
-| [`docs/DEVELOPMENT_FR.md`](docs/DEVELOPMENT_FR.md) | Flux de travail de développement. |
-| [`docs/DOCKER_FR.md`](docs/DOCKER_FR.md) | Exécution avec Docker Compose. |
-| [`docs/ENV_MIGRATION_FR.md`](docs/ENV_MIGRATION_FR.md) | Migration des anciennes variables d’environnement. |
-| [`docs/INSTALLATION_FR.md`](docs/INSTALLATION_FR.md) | Installation et première configuration. |
-| [`docs/RELEASE_FR.md`](docs/RELEASE_FR.md) | Checklist de publication. |
-| [`docs/SECURITY_FR.md`](docs/SECURITY_FR.md) | Sécurité, secrets et autorisations recommandées. |
-| [`docs/TROUBLESHOOTING_FR.md`](docs/TROUBLESHOOTING_FR.md) | Problèmes courants et correctifs. |
-| [`docs/WINDOWS_APP_CONTROL_FR.md`](docs/WINDOWS_APP_CONTROL_FR.md) | Contournement Windows App Control pour le build local. |
+| [`docs/ACCOUNT_MANAGEMENT_FR.md`](docs/ACCOUNT_MANAGEMENT_FR.md) | Création, modification, ban et désactivation forte de comptes. |
+| [`docs/ARCHITECTURE_FR.md`](docs/ARCHITECTURE_FR.md) | Architecture interne et flux des interactions. |
+| [`docs/COMMANDS_FR.md`](docs/COMMANDS_FR.md) | Référence des commandes publiques et staff. |
+| [`docs/CONFIGURATION_FR.md`](docs/CONFIGURATION_FR.md) | Variables d’environnement et valeurs par défaut. |
+| [`docs/CREDITS_FR.md`](docs/CREDITS_FR.md) | Attribution, licence et projet d’origine. |
+| [`docs/DATABASE_FR.md`](docs/DATABASE_FR.md) | Scripts, tables et permissions SQL. |
+| [`docs/DEPLOYMENT_FR.md`](docs/DEPLOYMENT_FR.md) | Déploiement Docker ou binaire sur serveur. |
+| [`docs/DEVELOPMENT_FR.md`](docs/DEVELOPMENT_FR.md) | Développement, contribution et publication. |
+| [`docs/GMMSG_BRIDGE_FR.md`](docs/GMMSG_BRIDGE_FR.md) | File SQL et script NPC pour `/gmmsg`. |
+| [`docs/INSTALLATION_FR.md`](docs/INSTALLATION_FR.md) | Installation locale ou Docker et premier lancement. |
+| [`docs/SECURITY_FR.md`](docs/SECURITY_FR.md) | Secrets, rôles et principe du moindre privilège. |
+| [`docs/TROUBLESHOOTING_FR.md`](docs/TROUBLESHOOTING_FR.md) | Problèmes courants et diagnostics. |
 
 ## Licence
 

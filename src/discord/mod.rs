@@ -1,4 +1,6 @@
 pub mod embeds;
+#[allow(dead_code)]
+pub mod ui;
 
 mod command_registry;
 mod interactions;

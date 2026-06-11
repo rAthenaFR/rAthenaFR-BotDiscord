@@ -1,32 +1,21 @@
 # Crédits
 
-**rAthenaFR-BotDiscord** est un projet open-source créé et maintenu à l’origine par **GhostPunishR** pour l’organisation **rAthenaFR**.
+`rAthenaFR-BotDiscord` a été créé et maintenu à l’origine par **GhostPunishR** pour l’organisation **rAthenaFR**.
 
-Dépôt original :
+Projet d’origine :
 
-https://github.com/rAthenaFR/rAthenaFR-BotDiscord
-
-Ce projet a pour objectif de fournir un bot Discord moderne pour les serveurs **rAthena**, avec des commandes publiques et staff, une lecture sécurisée de la base de données et une intégration pensée pour les communautés Ragnarok Online francophones.
-
-## Auteur original
-
-- **GhostPunishR**
-- Organisation : **rAthenaFR**
-- Projet original : **rAthenaFR-BotDiscord**
+<https://github.com/rAthenaFR/rAthenaFR-BotDiscord>
 
 ## Licence
 
-Ce projet est distribué sous licence **GPL-3.0**.
+Le projet est distribué sous licence `GPL-3.0-only`. Consulte [LICENSE](../LICENSE) pour les conditions complètes.
 
-Toute modification, redistribution ou adaptation du projet doit respecter les conditions de cette licence, notamment la conservation de la licence, l’accès au code source et l’attribution du projet original.
+> [!IMPORTANT]
+> Toute redistribution ou adaptation doit respecter la licence et conserver une attribution claire vers le projet d’origine.
 
-## Attribution
+## Écosystème
 
-Si vous utilisez, modifiez, traduisez ou redistribuez ce projet, merci de conserver une attribution claire vers le projet original :
+Le bot s’appuie sur Rust, Serenity, SQLx, Tokio et l’écosystème rAthena. Merci aux mainteneurs et contributeurs de ces projets ainsi qu’aux communautés Ragnarok Online qui testent et documentent les intégrations.
 
-> Basé sur rAthenaFR-BotDiscord, créé par GhostPunishR pour rAthenaFR.  
-> Projet original : https://github.com/rAthenaFR/rAthenaFR-BotDiscord
-
-## Remerciements
-
-Merci à la communauté **rAthena**, aux contributeurs open-source et aux administrateurs de serveurs Ragnarok Online qui participent à faire vivre l’écosystème.
+> [!NOTE]
+> Ce projet est indépendant des ayants droit de Ragnarok Online. Les exploitants restent responsables des licences, contenus et réglementations applicables à leur serveur.

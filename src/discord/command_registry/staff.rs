@@ -1,3 +1,5 @@
+use super::localization::{localized_command, localized_option, localized_subcommand};
+use crate::i18n::I18nKey;
 use serenity::all::{CommandOptionType, CreateCommand, CreateCommandOption};
 
 pub(super) fn command_definitions() -> Vec<CreateCommand> {
@@ -12,321 +14,329 @@ pub(super) fn command_definitions() -> Vec<CreateCommand> {
 }
 
 fn staff_command() -> CreateCommand {
-    CreateCommand::new("staff")
-        .description("Commandes staff essentielles.")
+    localized_command("staff", I18nKey::CommandStaffDescription)
         .add_option(
-            subcommand("player", "Fiche complète d'un personnage.")
+            subcommand("player", "subcommand-staff-player-description")
                 .add_sub_option(character_option()),
         )
         .add_option(
-            subcommand(
-                "account",
-                "Compte lié au personnage, sans mot de passe ni hash.",
-            )
-            .add_sub_option(character_option()),
+            subcommand("account", "subcommand-staff-account-description")
+                .add_sub_option(character_option()),
         )
         .add_option(
-            subcommand(
-                "chars",
-                "Personnages d'un compte ou du compte lié à un personnage.",
-            )
-            .add_sub_option(lookup_option()),
+            subcommand("chars", "subcommand-staff-chars-description")
+                .add_sub_option(lookup_option()),
         )
         .add_option(
-            subcommand("inventory", "Inventaire complet du personnage.")
+            subcommand("inventory", "subcommand-staff-inventory-description")
                 .add_sub_option(character_option())
                 .add_sub_option(limit_option()),
         )
         .add_option(
-            subcommand("equipment", "Equipement porte par le personnage.")
+            subcommand("equipment", "subcommand-staff-equipment-description")
                 .add_sub_option(character_option())
                 .add_sub_option(limit_option()),
         )
         .add_option(
-            subcommand("cart", "Contenu du cart.")
+            subcommand("cart", "subcommand-staff-cart-description")
                 .add_sub_option(character_option())
                 .add_sub_option(limit_option()),
         )
         .add_option(
-            subcommand("storage", "Storage du compte.")
+            subcommand("storage", "subcommand-staff-storage-description")
                 .add_sub_option(character_option())
                 .add_sub_option(limit_option()),
         )
         .add_option(
-            subcommand("guildstorage", "Coffre de guilde.")
+            subcommand("guildstorage", "subcommand-staff-guildstorage-description")
                 .add_sub_option(guild_option())
                 .add_sub_option(limit_option()),
         )
         .add_option(
-            subcommand("whohas", "Recherche qui possède un item.")
+            subcommand("whohas", "subcommand-staff-whohas-description")
                 .add_sub_option(item_option())
                 .add_sub_option(limit_option()),
         )
         .add_option(
-            subcommand("item-search", "Recherche d'un item dans les conteneurs.")
+            subcommand("item-search", "subcommand-staff-item-search-description")
                 .add_sub_option(item_option())
                 .add_sub_option(limit_option()),
         )
-        .add_option(subcommand("zeny", "Zeny d'un personnage.").add_sub_option(character_option()))
         .add_option(
-            subcommand("zenylog", "Historique zeny si les logs existent.")
+            subcommand("zeny", "subcommand-staff-zeny-description")
+                .add_sub_option(character_option()),
+        )
+        .add_option(
+            subcommand("zenylog", "subcommand-staff-zenylog-description")
                 .add_sub_option(character_option())
                 .add_sub_option(limit_option()),
         )
         .add_option(
-            subcommand("picklog", "Historique items si les logs existent.")
+            subcommand("picklog", "subcommand-staff-picklog-description")
                 .add_sub_option(character_option())
                 .add_sub_option(limit_option()),
         )
         .add_option(
-            subcommand("trade-log", "Échanges joueur/joueur si les logs existent.")
+            subcommand("trade-log", "subcommand-staff-trade-log-description")
                 .add_sub_option(character_option())
                 .add_sub_option(limit_option()),
         )
         .add_option(
-            subcommand("mvp-log", "MVP tués par un joueur.")
+            subcommand("mvp-log", "subcommand-staff-mvp-log-description")
                 .add_sub_option(character_option())
                 .add_sub_option(limit_option()),
         )
         .add_option(
-            subcommand("loginlog", "Historique de connexion.")
+            subcommand("loginlog", "subcommand-staff-loginlog-description")
                 .add_sub_option(character_option())
                 .add_sub_option(limit_option()),
         )
         .add_option(
-            subcommand("ip-accounts", "Comptes partageant les mêmes IP.")
+            subcommand("ip-accounts", "subcommand-staff-ip-accounts-description")
                 .add_sub_option(character_option())
                 .add_sub_option(limit_option()),
         )
         .add_option(
-            subcommand("multiaccount", "Détection multi-compte.")
+            subcommand("multiaccount", "subcommand-staff-multiaccount-description")
                 .add_sub_option(character_option())
                 .add_sub_option(limit_option()),
         )
         .add_option(
-            subcommand("banned", "Liste des comptes bannis ou bloqués.")
+            subcommand("banned", "subcommand-staff-banned-description")
                 .add_sub_option(limit_option()),
         )
         .add_option(account_manage_group())
 }
 
 fn mod_command() -> CreateCommand {
-    CreateCommand::new("mod")
-        .description("Commandes de modération en lecture seule.")
+    localized_command("mod", I18nKey::CommandModDescription)
         .add_option(
-            subcommand("chatlog", "Messages récents d'un joueur.")
+            subcommand("chatlog", "subcommand-mod-chatlog-description")
                 .add_sub_option(character_option())
                 .add_sub_option(limit_option()),
         )
         .add_option(
-            subcommand("chat-search", "Recherche dans les logs de chat.")
-                .add_sub_option(text_option("text", "Texte à rechercher."))
+            subcommand("chat-search", "subcommand-mod-chat-search-description")
+                .add_sub_option(text_option("text", "option-search-text-description"))
                 .add_sub_option(limit_option()),
         )
         .add_option(
-            subcommand("report-context", "Contexte rapide d'un signalement.")
-                .add_sub_option(character_option())
-                .add_sub_option(limit_option()),
+            subcommand(
+                "report-context",
+                "subcommand-mod-report-context-description",
+            )
+            .add_sub_option(character_option())
+            .add_sub_option(limit_option()),
         )
         .add_option(
-            subcommand("branchlog", "Utilisation Dead Branch/Bloody Branch.")
+            subcommand("branchlog", "subcommand-mod-branchlog-description")
                 .add_sub_option(character_option())
                 .add_sub_option(limit_option()),
         )
 }
 
 fn debug_command() -> CreateCommand {
-    CreateCommand::new("debug")
-        .description("Commandes debug rAthena en lecture seule.")
+    localized_command("debug", I18nKey::CommandDebugDescription)
         .add_option(
-            subcommand("quest", "Quêtes actives/terminées d'un personnage.")
+            subcommand("quest", "subcommand-debug-quest-description")
                 .add_sub_option(character_option())
                 .add_sub_option(limit_option()),
         )
         .add_option(
-            subcommand("char-vars", "Variables personnage.")
+            subcommand("char-vars", "subcommand-debug-char-vars-description")
                 .add_sub_option(character_option())
                 .add_sub_option(limit_option()),
         )
         .add_option(
-            subcommand("acc-vars", "Variables compte.")
+            subcommand("acc-vars", "subcommand-debug-acc-vars-description")
                 .add_sub_option(character_option())
                 .add_sub_option(limit_option()),
         )
 }
 
 fn audit_command() -> CreateCommand {
-    CreateCommand::new("audit")
-        .description("Audit staff et logs GM en lecture seule.")
+    localized_command("audit", I18nKey::CommandAuditDescription)
         .add_option(
-            subcommand("atcommands", "Commandes GM utilisées par un GM.")
-                .add_sub_option(text_option("gm", "Nom du GM."))
+            subcommand("atcommands", "subcommand-audit-atcommands-description")
+                .add_sub_option(text_option("gm", "option-gm-name-description"))
                 .add_sub_option(limit_option()),
         )
         .add_option(
-            subcommand(
-                "item-created",
-                "Items créés par commandes/admin/scripts si détectables.",
-            )
-            .add_sub_option(limit_option()),
-        )
-        .add_option(
-            subcommand("zeny-created", "Zeny créé ou retiré si détectable.")
+            subcommand("item-created", "subcommand-audit-item-created-description")
                 .add_sub_option(limit_option()),
         )
         .add_option(
-            subcommand("gm-activity", "Résumé d'activité d'un GM.")
-                .add_sub_option(text_option("gm", "Nom du GM."))
+            subcommand("zeny-created", "subcommand-audit-zeny-created-description")
+                .add_sub_option(limit_option()),
+        )
+        .add_option(
+            subcommand("gm-activity", "subcommand-audit-gm-activity-description")
+                .add_sub_option(text_option("gm", "option-gm-name-description"))
                 .add_sub_option(limit_option()),
         )
 }
 
 fn db_command() -> CreateCommand {
-    CreateCommand::new("db")
-        .description("Diagnostic base rAthena en lecture seule.")
+    localized_command("db", I18nKey::CommandDbDescription)
+        .add_option(subcommand("health", "subcommand-db-health-description"))
+        .add_option(
+            subcommand("tables", "subcommand-db-tables-description").add_sub_option(limit_option()),
+        )
+        .add_option(subcommand("count", "subcommand-db-count-description"))
         .add_option(subcommand(
-            "health",
-            "Tables présentes, manquantes et logs actifs.",
+            "logs-size",
+            "subcommand-db-logs-size-description",
         ))
         .add_option(
-            subcommand("tables", "Liste les tables rAthena détectées.")
-                .add_sub_option(limit_option()),
-        )
-        .add_option(subcommand("count", "Nombre de lignes par table utile."))
-        .add_option(subcommand("logs-size", "Volume des logs SQL."))
-        .add_option(
-            subcommand("last-update", "État de sql_updates si la table existe.")
+            subcommand("last-update", "subcommand-db-last-update-description")
                 .add_sub_option(limit_option()),
         )
 }
 
 fn gmmsg_command() -> CreateCommand {
-    CreateCommand::new("gmmsg")
-        .description("Messages en jeu via GameBridge.")
+    localized_command("gmmsg", I18nKey::CommandGmmsgDescription)
         .add_option(
-            subcommand("server", "Message global serveur.").add_sub_option(message_option()),
-        )
-        .add_option(
-            subcommand("map", "Message sur une map, si le bridge le supporte.")
-                .add_sub_option(text_option("map", "Nom de la map."))
+            subcommand("server", "subcommand-gmmsg-server-description")
                 .add_sub_option(message_option()),
         )
         .add_option(
-            subcommand("blue", "Annonce bleue, si le bridge la supporte.")
+            subcommand("map", "subcommand-gmmsg-map-description")
+                .add_sub_option(text_option("map", "option-map-name-description"))
                 .add_sub_option(message_option()),
         )
         .add_option(
-            subcommand("color", "Annonce couleur RRGGBB, si le bridge la supporte.")
-                .add_sub_option(text_option("hex", "Couleur RRGGBB."))
+            subcommand("blue", "subcommand-gmmsg-blue-description")
                 .add_sub_option(message_option()),
         )
         .add_option(
-            subcommand("test", "Mode test/log uniquement.").add_sub_option(message_option()),
+            subcommand("color", "subcommand-gmmsg-color-description")
+                .add_sub_option(text_option("hex", "option-hex-color-description"))
+                .add_sub_option(message_option()),
+        )
+        .add_option(
+            subcommand("test", "subcommand-gmmsg-test-description")
+                .add_sub_option(message_option()),
         )
 }
 
 fn account_manage_group() -> CreateCommandOption {
-    CreateCommandOption::new(
+    localized_option(
         CommandOptionType::SubCommandGroup,
         "account-manage",
-        "Gestion sensible des comptes rAthena.",
+        "subcommand-group-account-manage-description",
     )
     .add_sub_option(
-        subcommand("edit", "Modifier un champ sûr de login.")
+        subcommand("edit", "subcommand-account-manage-edit-description")
             .add_sub_option(account_lookup_option())
             .add_sub_option(account_field_option())
-            .add_sub_option(text_option("value", "Nouvelle valeur."))
-            .add_sub_option(optional_text_option("reason", "Raison staff.")),
+            .add_sub_option(text_option("value", "option-account-value-description"))
+            .add_sub_option(optional_text_option(
+                "reason",
+                "option-staff-reason-description",
+            )),
     )
     .add_sub_option(
-        subcommand("ban", "Bloquer ou bannir un compte.")
+        subcommand("ban", "subcommand-account-manage-ban-description")
             .add_sub_option(account_lookup_option())
             .add_sub_option(optional_integer_option(
                 "until",
-                "Timestamp UNIX de fin de ban optionnel.",
+                "option-ban-until-description",
                 0,
             ))
-            .add_sub_option(optional_text_option("reason", "Raison staff.")),
+            .add_sub_option(optional_text_option(
+                "reason",
+                "option-staff-reason-description",
+            )),
     )
     .add_sub_option(
-        subcommand("unban", "Débloquer un compte.")
+        subcommand("unban", "subcommand-account-manage-unban-description")
             .add_sub_option(account_lookup_option())
-            .add_sub_option(optional_text_option("reason", "Raison staff.")),
+            .add_sub_option(optional_text_option(
+                "reason",
+                "option-staff-reason-description",
+            )),
     )
     .add_sub_option(
-        subcommand("delete", "Désactivation forte d'un compte.")
+        subcommand("delete", "subcommand-account-manage-delete-description")
             .add_sub_option(
-                CreateCommandOption::new(
+                localized_option(
                     CommandOptionType::Integer,
                     "account_id",
-                    "ID exact du compte.",
+                    "option-account-id-description",
                 )
                 .min_int_value(1)
                 .required(true),
             )
-            .add_sub_option(text_option("confirm", "Confirmation exacte : SUPPRIMER."))
-            .add_sub_option(optional_text_option("reason", "Raison staff.")),
+            .add_sub_option(text_option("confirm", "option-confirm-delete-description"))
+            .add_sub_option(optional_text_option(
+                "reason",
+                "option-staff-reason-description",
+            )),
     )
 }
 
-fn subcommand(name: &str, description: &str) -> CreateCommandOption {
-    CreateCommandOption::new(CommandOptionType::SubCommand, name, description)
+fn subcommand(name: &str, description_key: &str) -> CreateCommandOption {
+    localized_subcommand(name, description_key)
 }
 
-fn text_option(name: &str, description: &str) -> CreateCommandOption {
-    CreateCommandOption::new(CommandOptionType::String, name, description).required(true)
+fn text_option(name: &str, description_key: &str) -> CreateCommandOption {
+    localized_option(CommandOptionType::String, name, description_key).required(true)
 }
 
-fn optional_text_option(name: &str, description: &str) -> CreateCommandOption {
-    CreateCommandOption::new(CommandOptionType::String, name, description).required(false)
+fn optional_text_option(name: &str, description_key: &str) -> CreateCommandOption {
+    localized_option(CommandOptionType::String, name, description_key).required(false)
 }
 
-fn optional_integer_option(name: &str, description: &str, min: u64) -> CreateCommandOption {
-    CreateCommandOption::new(CommandOptionType::Integer, name, description)
+fn optional_integer_option(name: &str, description_key: &str, min: u64) -> CreateCommandOption {
+    localized_option(CommandOptionType::Integer, name, description_key)
         .min_int_value(min)
         .required(false)
 }
 
 fn account_lookup_option() -> CreateCommandOption {
-    text_option("account", "account_id exact ou userid exact.")
+    text_option("account", "option-account-lookup-description")
 }
 
 fn account_field_option() -> CreateCommandOption {
-    CreateCommandOption::new(CommandOptionType::String, "field", "Champ sûr à modifier.")
-        .required(true)
-        .add_string_choice("group_id", "group_id")
-        .add_string_choice("state", "state")
-        .add_string_choice("unban_time", "unban_time")
-        .add_string_choice("expiration_time", "expiration_time")
-        .add_string_choice("logincount", "logincount")
-        .add_string_choice("sex", "sex")
+    localized_option(
+        CommandOptionType::String,
+        "field",
+        "option-account-field-description",
+    )
+    .required(true)
+    .add_string_choice("group_id", "group_id")
+    .add_string_choice("state", "state")
+    .add_string_choice("unban_time", "unban_time")
+    .add_string_choice("expiration_time", "expiration_time")
+    .add_string_choice("logincount", "logincount")
+    .add_string_choice("sex", "sex")
 }
 
 fn character_option() -> CreateCommandOption {
-    text_option("character", "Nom du personnage.")
+    text_option("character", "option-character-name-description")
 }
 
 fn lookup_option() -> CreateCommandOption {
-    text_option("lookup", "Nom de personnage ou account_id.")
+    text_option("lookup", "option-lookup-description")
 }
 
 fn guild_option() -> CreateCommandOption {
-    text_option("guild", "Nom de guilde.")
+    text_option("guild", "option-guild-lookup-description")
 }
 
 fn item_option() -> CreateCommandOption {
-    text_option("item", "Nom partiel ou ID de l'item.")
+    text_option("item", "option-item-query-description")
 }
 
 fn message_option() -> CreateCommandOption {
-    text_option("message", "Message à envoyer.")
+    text_option("message", "option-message-description")
 }
 
 fn limit_option() -> CreateCommandOption {
-    CreateCommandOption::new(
+    localized_option(
         CommandOptionType::Integer,
         "limit",
-        "Nombre maximum de lignes à afficher.",
+        "option-limit-description",
     )
     .min_int_value(1)
     .required(false)

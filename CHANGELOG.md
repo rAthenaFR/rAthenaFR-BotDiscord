@@ -1,5 +1,50 @@
 # Changelog
 
+## 0.2.4
+
+### Ajouté
+
+- Ajout d’une couche i18n dans `src/i18n/` avec locales typées, clés `I18nKey`, chargement des catalogues FTL et traduction avec variables.
+- Ajout des catalogues `fr-FR`, `en-US`, `es-ES` et `de-DE`, avec `fr-FR` comme fallback.
+- Localisation des descriptions de commandes, sous-commandes et options slash, des réponses runtime, des embeds et des boutons de pagination MVP.
+- Ajout de variantes d’embeds localisées pour les commandes publiques et staff, les erreurs, les listes, les comptes, le marché, les monstres, les MVP et les logs staff.
+- Ajout de tests i18n vérifiant la présence des clés dans les quatre catalogues, la cohérence des variables FTL et la normalisation des locales Discord.
+
+### Modifié
+
+- Découpage du dispatcher Discord en modules de routage, réponses, validations, composants et handlers publics/staff par domaine sous `src/discord/interactions/dispatcher/`.
+- Découpage des embeds Discord par domaine sous `src/discord/embeds/`, avec helpers communs de formatage, limitation et assainissement.
+- Découpage de `src/rathenafr/database.rs` en repositories internes spécialisés sous `src/rathenafr/database/`.
+- Découpage de la configuration sous `src/config/` et des modèles rAthenaFR sous `src/rathenafr/models/`.
+- Conservation de `RAthenaFrDatabase` comme API publique stable et limitation des helpers internes à leur module.
+- Conservation des noms de commandes slash, du fallback français et du comportement des permissions staff.
+
+### Corrigé
+
+- Correction des conflits de modules Rust entre les anciens fichiers monolithiques et leurs nouveaux dossiers `dispatcher/` et `models/`.
+- Correction des imports et réexports cassés après le déplacement des modules de configuration, modèles, interactions et embeds.
+- Correction de la locale utilisée lors de la création initiale du panneau MVP.
+- Correction des attributs Clippy dupliqués, des signatures utilisant `&String`, des visibilités de tests et de plusieurs simplifications sans changement métier.
+- Validation finale réussie avec `cargo fmt --all`, `cargo check --workspace`, Clippy avec `-D warnings` et 87 tests.
+
+### Nettoyage
+
+- Suppression des anciens modules de compatibilité ou placeholders non référencés :
+  - `src/discord/commands/` ;
+  - `src/discord/interactions/components/` ;
+  - `src/discord/interactions/public/` ;
+  - `src/discord/interactions/staff/` ;
+  - `src/discord/interactions/router.rs` ;
+  - `src/discord/ui/embeds/` ;
+  - `src/rathenafr/repositories/` ;
+  - `src/rathenafr/services/`.
+- Suppression des anciens monolithes `src/discord/interactions/dispatcher.rs` et `src/rathenafr/models.rs`, remplacés par leurs structures modulaires.
+
+### Compatibilité
+
+- Aucun changement du schéma SQL, des permissions staff ou des noms de commandes slash publiques.
+- Les appels existants à `RAthenaFrDatabase` restent compatibles.
+
 ## 0.2.3
 
 ### Ajouté

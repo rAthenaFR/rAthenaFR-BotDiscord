@@ -1,93 +1,101 @@
-# Mise en ligne
+# Déploiement
 
-## Préparation
+Docker Compose est le mode recommandé pour une instance durable. Le bot n’expose aucun port entrant.
 
-Le bot n’a pas besoin de port entrant public. Il doit joindre Discord, MariaDB/MySQL et, pour les checks serveur de `/server`, les ports login/char/map si tu les configures.
+## Préparer le serveur
 
-> [!TIP]
-> **Fichier d’environnement Docker**
->
-> ```bash
-> cp .env.docker.example .env
-> ```
+Installe Docker et Docker Compose, clone le dépôt, puis :
+
+```bash
+cp .env.docker.example .env
+docker network create rathena-network
+```
+
+Configure au minimum Discord et SQL dans `.env`.
 
 > [!CAUTION]
-> **Secrets**
->
-> Ne commit jamais `.env`.
-> Ce fichier contient le token Discord et les identifiants SQL.
+> `.env` contient le token Discord et le mot de passe SQL. Limite ses permissions et ne le copie pas dans une image ou un dépôt.
 
-## Discord
+## Réseau
 
-```env
-DISCORD_TOKEN=replace_me
-DISCORD_CLIENT_ID=replace_me
-DISCORD_GUILD_ID=replace_me
-```
+Le fichier `docker-compose.yml` rejoint le réseau externe `rathena-network`.
 
-Ajoute les rôles staff selon tes besoins :
+Si MariaDB et rAthena sont dans Docker, connecte leurs services au même réseau et utilise leurs noms DNS :
 
 ```env
-RATHENAFR_HELPER_ROLE_IDS=
-RATHENAFR_MODERATOR_ROLE_IDS=
-RATHENAFR_GM_ROLE_IDS=
-RATHENAFR_ADMIN_ROLE_IDS=
-RATHENAFR_OWNER_ROLE_IDS=
+RATHENAFR_DB_HOST=rathena-db
+RATHENAFR_LOGIN_HOST=rathena-login
+RATHENAFR_CHAR_HOST=rathena-char
+RATHENAFR_MAP_HOST=rathena-map
 ```
 
-## SQL
+> [!WARNING]
+> Ne publie pas le port MariaDB `3306` sur Internet. Utilise un réseau Docker ou privé.
 
-Lecture seule :
+## Construire et démarrer
 
-```sql
-GRANT SELECT ON `ragnarok`.* TO 'rathenafr_bot'@'%';
+```bash
+docker compose build
+docker compose up -d
+docker compose logs -f rathenafr-discord-bot
 ```
 
-Option `/createaccount` :
+Le conteneur :
 
-```sql
-GRANT INSERT ON `ragnarok`.`login` TO 'rathenafr_bot'@'%';
-```
+- utilise l’utilisateur non-root `10001` ;
+- possède un système de fichiers en lecture seule ;
+- active `no-new-privileges` ;
+- limite la rotation des logs Docker.
 
-## Déployer les commandes
+## Déployer le registre Discord
 
 ```bash
 docker compose run --rm rathenafr-discord-bot --deploy
 ```
 
-Équivalent Windows :
-
-```powershell
-.\scripts\docker-deploy.ps1
-```
-
-Refais cette commande après tout changement de commande slash. Elle retire aussi les anciennes commandes hors scope du serveur Discord.
-
 > [!IMPORTANT]
-> **Après la refonte**
->
-> Le redéploiement est nécessaire pour que Discord remplace réellement les anciens registres par les nouveaux packs publics et staff.
+> Exécute cette commande après toute modification des commandes, sous-commandes, options ou descriptions slash.
 
-## Démarrer
+## Mettre à jour
 
 ```bash
-docker compose up -d --build
-docker compose logs -f rathenafr-discord-bot
+git pull
+docker compose build --pull
+docker compose run --rm rathenafr-discord-bot --deploy
+docker compose up -d
+docker compose logs --tail 100 rathenafr-discord-bot
 ```
 
-Équivalents Windows :
+Le redéploiement Discord peut être omis si la mise à jour ne touche pas au registre.
 
-```powershell
-.\scripts\docker-up.ps1
-.\scripts\docker-logs.ps1
+> [!TIP]
+> Sous Windows, les scripts `docker-build.ps1`, `docker-deploy.ps1`, `docker-up.ps1` et `docker-logs.ps1` exécutent les mêmes opérations.
+
+## Déploiement sans Docker
+
+Compile :
+
+```bash
+cargo build --release
 ```
+
+Le binaire se trouve dans `target/release/`. Exécute-le avec les variables d’environnement chargées par ton gestionnaire de services.
+
+Un service `systemd` doit au minimum :
+
+- utiliser un utilisateur système sans shell ;
+- définir un répertoire de travail lisible ;
+- charger les secrets depuis un fichier protégé ;
+- redémarrer le processus en cas d’échec ;
+- autoriser les connexions sortantes vers Discord et SQL.
 
 ## Checklist
 
-- `.env` est absent de Git.
-- `DISCORD_TOKEN` est valide.
-- `DISCORD_GUILD_ID` correspond au serveur Discord cible.
-- La base SQL est joignable.
-- L’utilisateur SQL est limité à `SELECT`, avec `INSERT` sur `login` seulement si `/createaccount` est activée.
-- Les rôles staff sont configurés.
-- `cargo run -- --deploy` ou l’équivalent Docker a été exécuté après la refonte des commandes.
+- Les quatre commandes Cargo de validation passent.
+- `.env` n’est pas suivi par Git.
+- L’utilisateur SQL possède seulement les droits nécessaires.
+- Le réseau Docker ou privé permet de joindre SQL et les services rAthena.
+- Les rôles Discord sont configurés.
+- Le registre slash a été redéployé si nécessaire.
+- `/server` et `/db health` répondent sans exposer d’adresse sensible.
+- Les fonctions d’écriture inutilisées restent désactivées.

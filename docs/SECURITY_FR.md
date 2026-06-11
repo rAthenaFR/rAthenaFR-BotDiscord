@@ -1,19 +1,27 @@
 # Sécurité
 
-## Principes
+## Modèle de confiance
 
-- Toutes les commandes SQL de consultation sont en lecture seule.
-- `/createaccount`, `/staff account-manage` et `/gmmsg` en mode `sql_queue` sont les seules fonctionnalités qui peuvent écrire en base, uniquement si elles sont activées.
-- Les commandes staff utilisent des réponses éphémères pour les données sensibles.
-- Les mots de passe, hashes, e-mails privés et IP complètes ne doivent pas être affichés.
-- `/gmmsg` peut écrire dans la file SQL `discord_gmmsg_queue` si `RATHENAFR_GMMSG_MODE=sql_queue`; il n’exécute jamais de shell.
+Le bot reçoit des interactions Discord, lit une base rAthena et peut effectuer trois familles d’écriture explicitement activées :
+
+- création de compte ;
+- gestion staff de compte ;
+- insertion GMMSG dans une file SQL.
+
+Tout le reste doit rester en lecture seule.
 
 > [!CAUTION]
-> **Données sensibles**
->
-> Ne publie jamais de mot de passe, hash, e-mail privé, IP complète, token Discord ou contenu réel de `.env` dans Discord, dans les logs publics ou dans Git.
+> Ne publie jamais token Discord, mot de passe SQL, hash, PIN, e-mail privé, IP complète ou contenu réel de `.env`.
 
-## Rôles
+## Secrets
+
+- Garde `.env` hors Git.
+- Utilise un fichier protégé ou un gestionnaire de secrets en production.
+- Renouvelle immédiatement un token ou mot de passe exposé.
+- N’inclus pas de secrets dans `RUST_LOG`.
+- Évite de passer les mots de passe en argument de commande, car ils peuvent apparaître dans l’historique ou la liste des processus.
+
+## Rôles Discord
 
 Configure des rôles dédiés :
 
@@ -25,50 +33,78 @@ RATHENAFR_ADMIN_ROLE_IDS=
 RATHENAFR_OWNER_ROLE_IDS=
 ```
 
-Laisse une variable vide pour refuser ce niveau d’accès.
+Les listes vides ne donnent aucun accès. Les rôles supérieurs sont cumulativement autorisés.
 
-## SQL
+> [!IMPORTANT]
+> La permission est contrôlée dans le handler à chaque interaction. Le nom d’une commande ou sa visibilité dans Discord ne constitue pas une protection.
 
-Permission normale :
+## Réponses et données privées
+
+- Les commandes staff sensibles répondent en éphémère.
+- Les IP issues des logs sont masquées.
+- Les comptes n’exposent pas `user_pass`, hash, PIN ou e-mail privé.
+- Les mentions `@everyone` et `@here` sont neutralisées dans les logs GMMSG.
+- Les messages d’erreur SQL visibles sont simplifiés.
+
+## Droits SQL
+
+Base recommandée :
 
 ```sql
 GRANT SELECT ON `ragnarok`.* TO 'rathenafr_bot'@'%';
 ```
 
-Permission optionnelle pour `/createaccount` :
+Ajoute seulement les droits nécessaires :
 
 ```sql
 GRANT INSERT ON `ragnarok`.`login` TO 'rathenafr_bot'@'%';
-```
-
-Permission optionnelle pour `/staff account-manage` :
-
-```sql
 GRANT UPDATE ON `ragnarok`.`login` TO 'rathenafr_bot'@'%';
-```
-
-Permission optionnelle pour `/gmmsg` en mode `sql_queue` :
-
-```sql
 GRANT INSERT ON `ragnarok`.`discord_gmmsg_queue` TO 'rathenafr_bot'@'%';
 ```
 
-> [!CAUTION]
-> **Droits à ne pas accorder**
->
-> Ne donne pas `DELETE`, `DROP`, `ALTER` ou `CREATE` au bot.
-> `UPDATE` doit rester limité à `login` et uniquement si `/staff account-manage` est activée.
-
-## `/gmmsg`
-
-`/gmmsg` limite la longueur du message, nettoie les caractères de contrôle et neutralise `@everyone`/`@here` dans les logs Discord.
-
-En mode `sql_queue`, le message est stocké dans `discord_gmmsg_queue.message` en octets Windows-1252 si `RATHENAFR_GMMSG_ENCODING=windows1252`.
-
 > [!WARNING]
-> Les messages `/gmmsg` peuvent être visibles en jeu, en base SQL et dans les logs staff. Ne les utilise pas pour transmettre des tokens, mots de passe, données personnelles ou secrets opérationnels.
+> Les scripts combinés peuvent accorder plusieurs droits optionnels. Relis-les et retire les droits correspondant aux fonctions désactivées.
+
+Interdictions recommandées pour le compte du bot :
+
+- `DELETE`
+- `DROP`
+- `ALTER`
+- `CREATE`
+- privilèges globaux
+
+## Gestion de compte
+
+`/staff account-manage delete` est une désactivation forte, pas un `DELETE SQL`. Elle exige un rôle Owner par défaut, une option dédiée et la confirmation `SUPPRIMER`.
+
+`/createaccount` fait transiter le mot de passe dans une interaction Discord.
+
+> [!CAUTION]
+> N’active pas la création publique sans informer les utilisateurs du canal de transmission et sans vérifier les règles de conservation de Discord applicables à ton serveur.
+
+## GMMSG
+
+Les messages peuvent être conservés dans :
+
+- l’interaction Discord ;
+- le salon de logs staff ;
+- `discord_gmmsg_queue` ;
+- les logs rAthena ;
+- le client en jeu.
+
+N’utilise jamais GMMSG pour des secrets ou données personnelles.
+
+## Docker et réseau
+
+- Le conteneur s’exécute sans root.
+- Le système de fichiers est en lecture seule.
+- Aucun port entrant n’est publié.
+- MariaDB doit rester sur un réseau privé.
+- Les images et dépendances doivent être régulièrement reconstruites.
 
 > [!TIP]
-> **Journalisation staff**
->
-> Configure `RATHENAFR_STAFF_LOG_CHANNEL_ID` si tu veux tracer les utilisations de `/gmmsg` dans un salon staff.
+> Vérifie périodiquement les droits avec `SHOW GRANTS FOR 'rathenafr_bot'@'%';` et compare-les aux fonctionnalités réellement activées.
+
+## Signalement
+
+Pour une vulnérabilité, suis la procédure de `SECURITY.md` à la racine plutôt que d’ouvrir une issue publique avec des détails exploitables.
