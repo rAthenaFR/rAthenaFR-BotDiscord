@@ -74,7 +74,7 @@ Les catalogues sont intégrés au binaire avec `include_str!`. `BotLocale::from_
 Les descriptions slash sont localisées au déploiement. Les réponses runtime utilisent la locale de l’interaction.
 
 > [!IMPORTANT]
-> Une nouvelle clé doit exister dans les quatre catalogues avec les mêmes variables.
+> Une nouvelle clé doit exister dans les sept catalogues avec les mêmes variables.
 
 ## Base de données
 

@@ -98,6 +98,15 @@ fn discord_locales_are_normalized_with_french_fallback() {
     for value in ["de", "de-DE"] {
         assert_eq!(BotLocale::from_discord(value), BotLocale::DeDe);
     }
+    for value in ["ja", "ja-JP"] {
+        assert_eq!(BotLocale::from_discord(value), BotLocale::JaJp);
+    }
+    for value in ["ko", "ko-KR"] {
+        assert_eq!(BotLocale::from_discord(value), BotLocale::KoKr);
+    }
+    for value in ["zh", "zh-CN", "zh-SG", "zh-TW", "zh-HK"] {
+        assert_eq!(BotLocale::from_discord(value), BotLocale::ZhCn);
+    }
 
     assert_eq!(BotLocale::DEFAULT, BotLocale::FrFr);
     assert_eq!(BotLocale::from_discord("unsupported"), BotLocale::FrFr);

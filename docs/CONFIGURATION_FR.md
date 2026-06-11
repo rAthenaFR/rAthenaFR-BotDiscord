@@ -137,7 +137,7 @@ Consulte [Bridge GMMSG](GMMSG_BRIDGE_FR.md).
 
 ## Langues et logs
 
-Les réponses suivent la locale Discord de l’utilisateur pour `fr-FR`, `en-US`, `es-ES` et `de-DE`. Les variantes `fr`, `en-GB`, `es-419` et `de` sont normalisées. Le fallback est fixé à `fr-FR`.
+Les réponses suivent la locale Discord de l’utilisateur pour `fr-FR`, `en-US`, `es-ES`, `de-DE`, `ja-JP`, `ko-KR` et `zh-CN`. Les variantes régionales reconnues sont normalisées, notamment `fr`, `en-GB`, `es-419`, `de`, `ja`, `ko`, `zh-TW` et `zh-HK`. Le fallback est fixé à `fr-FR`.
 
 ```env
 RUST_LOG=rathenafr_discord_bot=info,info

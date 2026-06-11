@@ -4,6 +4,9 @@ const FR_FR: &str = include_str!("../../locales/fr-FR.ftl");
 const EN_US: &str = include_str!("../../locales/en-US.ftl");
 const ES_ES: &str = include_str!("../../locales/es-ES.ftl");
 const DE_DE: &str = include_str!("../../locales/de-DE.ftl");
+const JA_JP: &str = include_str!("../../locales/ja-JP.ftl");
+const KO_KR: &str = include_str!("../../locales/ko-KR.ftl");
+const ZH_CN: &str = include_str!("../../locales/zh-CN.ftl");
 
 pub fn catalog(locale: BotLocale) -> &'static str {
     match locale {
@@ -11,6 +14,9 @@ pub fn catalog(locale: BotLocale) -> &'static str {
         BotLocale::EnUs => EN_US,
         BotLocale::EsEs => ES_ES,
         BotLocale::DeDe => DE_DE,
+        BotLocale::JaJp => JA_JP,
+        BotLocale::KoKr => KO_KR,
+        BotLocale::ZhCn => ZH_CN,
     }
 }
 

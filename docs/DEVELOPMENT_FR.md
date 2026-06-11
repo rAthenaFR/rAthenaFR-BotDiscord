@@ -53,7 +53,7 @@ Sous Windows :
 ## Ajouter ou modifier une commande
 
 1. Définis la commande dans `src/discord/command_registry/public.rs` ou `staff.rs`.
-2. Ajoute les clés de description dans les quatre catalogues `locales/*.ftl`.
+2. Ajoute les clés de description dans les sept catalogues `locales/*.ftl`.
 3. Route la commande dans `src/discord/interactions/dispatcher/router.rs`.
 4. Place le handler dans `dispatcher/public/` ou `dispatcher/staff/`.
 5. Ajoute ou réutilise une méthode de `RAthenaFrDatabase` dans `src/rathenafr/database/`.
@@ -68,10 +68,10 @@ Sous Windows :
 ## Internationalisation
 
 - `fr-FR` est le fallback.
-- Les catalogues pris en charge sont `fr-FR`, `en-US`, `es-ES` et `de-DE`.
+- Les catalogues pris en charge sont `fr-FR`, `en-US`, `es-ES`, `de-DE`, `ja-JP`, `ko-KR` et `zh-CN`.
 - Utilise `I18nKey` pour les textes récurrents ou sensibles.
 - Les helpers raw `tr_raw`, `ts` et `tsa` restent réservés aux clés de catalogue non encore typées.
-- Une clé avec variables doit fournir les mêmes variables dans les quatre catalogues.
+- Une clé avec variables doit fournir les mêmes variables dans les sept catalogues.
 
 Les tests de `src/i18n/tests.rs` vérifient la couverture et les placeholders.
 

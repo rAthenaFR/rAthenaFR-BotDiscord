@@ -5,10 +5,10 @@
 ### Ajouté
 
 - Ajout d’une couche i18n dans `src/i18n/` avec locales typées, clés `I18nKey`, chargement des catalogues FTL et traduction avec variables.
-- Ajout des catalogues `fr-FR`, `en-US`, `es-ES` et `de-DE`, avec `fr-FR` comme fallback.
+- Ajout des catalogues `fr-FR`, `en-US`, `es-ES`, `de-DE`, `ja-JP`, `ko-KR` et `zh-CN`, avec `fr-FR` comme fallback.
 - Localisation des descriptions de commandes, sous-commandes et options slash, des réponses runtime, des embeds et des boutons de pagination MVP.
 - Ajout de variantes d’embeds localisées pour les commandes publiques et staff, les erreurs, les listes, les comptes, le marché, les monstres, les MVP et les logs staff.
-- Ajout de tests i18n vérifiant la présence des clés dans les quatre catalogues, la cohérence des variables FTL et la normalisation des locales Discord.
+- Ajout de tests i18n vérifiant la présence des clés dans les sept catalogues, la cohérence des variables FTL et la normalisation des locales Discord.
 
 ### Modifié
 
