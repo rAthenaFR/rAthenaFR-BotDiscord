@@ -5,6 +5,7 @@
 ### Ajouté
 
 - Ajout d’une ligne auteur commune (nom du serveur) sur l’ensemble des embeds via `base_embed` et les embeds spécifiques (mob, MVP, classement, logs staff) pour un rendu moderne et cohérent sur toutes les commandes.
+- Ajout d’un retry de connexion à la base au démarrage (`RATHENAFR_DB_CONNECT_MAX_ATTEMPTS`, `RATHENAFR_DB_CONNECT_RETRY_DELAY_SECONDS`) pour éviter les redémarrages du conteneur quand la base démarre après le bot.
 
 ### Corrigé
 

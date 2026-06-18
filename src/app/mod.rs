@@ -1,11 +1,15 @@
-use crate::config::AppConfig;
+use crate::config::{AppConfig, DatabaseConfig};
 use crate::discord::{create_client, deploy_commands};
 use crate::infra::env_loader;
 use crate::infra::observability::sanitize_database_host;
 use crate::rathenafr::RAthenaFrDatabase;
 use anyhow::Result;
 use std::sync::Arc;
-use tracing::{error, info};
+use std::time::Duration;
+use tracing::{error, info, warn};
+
+const DB_CONNECT_MAX_ATTEMPTS: u32 = 30;
+const DB_CONNECT_RETRY_DELAY_SECONDS: u64 = 2;
 
 pub async fn run() -> Result<()> {
     init_logging();
@@ -46,8 +50,7 @@ async fn start_bot() -> Result<()> {
     log_database_target(&config);
     log_cache_configuration(&config);
 
-    let database = RAthenaFrDatabase::connect(&config.database).await?;
-    database.ping().await?;
+    let database = connect_database_with_retry(&config.database).await?;
     info!("Connexion à la base de données validée.");
 
     let mut client = create_client(config, Arc::new(database)).await?;
@@ -58,6 +61,60 @@ async fn start_bot() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Établit la connexion à la base en réessayant tant qu'elle n'est pas
+/// joignable. Évite les redémarrages du conteneur quand la base (souvent sur
+/// une autre stack Docker) démarre après le bot.
+async fn connect_database_with_retry(config: &DatabaseConfig) -> Result<RAthenaFrDatabase> {
+    let max_attempts = env_u32("RATHENAFR_DB_CONNECT_MAX_ATTEMPTS")
+        .filter(|value| *value > 0)
+        .unwrap_or(DB_CONNECT_MAX_ATTEMPTS);
+    let delay = Duration::from_secs(
+        env_u64("RATHENAFR_DB_CONNECT_RETRY_DELAY_SECONDS")
+            .unwrap_or(DB_CONNECT_RETRY_DELAY_SECONDS),
+    );
+
+    let mut attempt = 1;
+    loop {
+        match try_connect_database(config).await {
+            Ok(database) => return Ok(database),
+            Err(error) if attempt < max_attempts => {
+                warn!(
+                    attempt,
+                    max_attempts,
+                    retry_in_seconds = delay.as_secs(),
+                    error = %error,
+                    "Base de données injoignable, nouvelle tentative de connexion."
+                );
+                tokio::time::sleep(delay).await;
+                attempt += 1;
+            }
+            Err(error) => {
+                return Err(error.context(format!(
+                    "échec de connexion à la base après {max_attempts} tentative(s)"
+                )));
+            }
+        }
+    }
+}
+
+async fn try_connect_database(config: &DatabaseConfig) -> Result<RAthenaFrDatabase> {
+    let database = RAthenaFrDatabase::connect(config).await?;
+    database.ping().await?;
+    Ok(database)
+}
+
+fn env_u32(key: &str) -> Option<u32> {
+    std::env::var(key)
+        .ok()
+        .and_then(|value| value.trim().parse::<u32>().ok())
+}
+
+fn env_u64(key: &str) -> Option<u64> {
+    std::env::var(key)
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
 }
 
 fn log_display_name() {

@@ -26,7 +26,11 @@ RATHENAFR_DB_USER=rathenafr_bot
 RATHENAFR_DB_PASSWORD=...
 RATHENAFR_DB_MAX_CONNECTIONS=5
 RATHENAFR_DB_ACQUIRE_TIMEOUT_SECONDS=5
+RATHENAFR_DB_CONNECT_MAX_ATTEMPTS=30
+RATHENAFR_DB_CONNECT_RETRY_DELAY_SECONDS=2
 ```
+
+Au démarrage, le bot réessaie la connexion à la base jusqu’à `RATHENAFR_DB_CONNECT_MAX_ATTEMPTS` fois, en attendant `RATHENAFR_DB_CONNECT_RETRY_DELAY_SECONDS` secondes entre chaque tentative. Pratique en Docker quand la base démarre après le bot : cela évite les redémarrages du conteneur au boot.
 
 Les checks TCP de `/server` utilisent :
 
