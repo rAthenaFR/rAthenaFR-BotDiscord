@@ -15,7 +15,7 @@ FROM debian:bookworm-slim
 LABEL org.opencontainers.image.title="rAthenaFR Discord Bot"
 LABEL org.opencontainers.image.description="Bot Discord à commandes slash en lecture seule pour bases rAthenaFR."
 LABEL org.opencontainers.image.licenses="GPL-3.0-only"
-LABEL org.opencontainers.image.version="0.2.4"
+LABEL org.opencontainers.image.version="0.3.0"
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
