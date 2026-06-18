@@ -848,3 +848,6 @@ fn parse_account_manage_i64(value: &str, field: &str) -> Result<i64> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod integration_tests;

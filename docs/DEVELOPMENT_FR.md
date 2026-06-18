@@ -33,6 +33,27 @@ make ci
 .\scripts\ci.ps1
 ```
 
+## Tests d'intégration base de données
+
+Les tests de `src/rathenafr/database/integration_tests.rs` exécutent de vraies
+requêtes SQL (recherche d'items et de monstres en schéma renewal, comptage du
+statut) contre une base jetable. Ils sont **ignorés** tant que
+`RATHENAFR_TEST_DATABASE_URL` n'est pas défini, et refusent de s'exécuter si le
+nom de la base ne contient pas « test » (garde-fou anti-production, car ils
+créent et suppriment des tables).
+
+```bash
+docker run --rm -d --name rathenafr-it -e MARIADB_ROOT_PASSWORD=root \
+  -e MARIADB_DATABASE=rathena_test -p 3310:3306 mariadb:11
+
+RATHENAFR_TEST_DATABASE_URL="mysql://root:root@127.0.0.1:3310/rathena_test" \
+  cargo test integration -- --test-threads=1
+
+docker rm -f rathenafr-it
+```
+
+La CI les exécute automatiquement via un service MariaDB (job `integration`).
+
 ## Lancer et déployer
 
 ```bash
