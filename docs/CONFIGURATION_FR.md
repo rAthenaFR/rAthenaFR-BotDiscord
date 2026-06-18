@@ -28,9 +28,13 @@ RATHENAFR_DB_MAX_CONNECTIONS=5
 RATHENAFR_DB_ACQUIRE_TIMEOUT_SECONDS=5
 RATHENAFR_DB_CONNECT_MAX_ATTEMPTS=30
 RATHENAFR_DB_CONNECT_RETRY_DELAY_SECONDS=2
+RATHENAFR_HEALTHCHECK_FILE=/tmp/rathenafr-health
+RATHENAFR_HEALTHCHECK_INTERVAL_SECONDS=30
 ```
 
 Au démarrage, le bot réessaie la connexion à la base jusqu’à `RATHENAFR_DB_CONNECT_MAX_ATTEMPTS` fois, en attendant `RATHENAFR_DB_CONNECT_RETRY_DELAY_SECONDS` secondes entre chaque tentative. Pratique en Docker quand la base démarre après le bot : cela évite les redémarrages du conteneur au boot.
+
+Le bot rafraîchit `RATHENAFR_HEALTHCHECK_FILE` toutes les `RATHENAFR_HEALTHCHECK_INTERVAL_SECONDS` secondes tant que la base répond. Le `HEALTHCHECK` du conteneur lit ce fichier : si la base devient injoignable, le fichier n’est plus rafraîchi et le conteneur passe `unhealthy`. Laisser `RATHENAFR_HEALTHCHECK_FILE` vide désactive la tâche. Le rootfs étant en lecture seule, `docker-compose.yml` monte `/tmp` en `tmpfs` pour permettre l’écriture du fichier.
 
 Les checks TCP de `/server` utilisent :
 

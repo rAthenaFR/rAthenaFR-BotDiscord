@@ -10,6 +10,8 @@ use tracing::{error, info, warn};
 
 const DB_CONNECT_MAX_ATTEMPTS: u32 = 30;
 const DB_CONNECT_RETRY_DELAY_SECONDS: u64 = 2;
+const HEALTHCHECK_DEFAULT_FILE: &str = "/tmp/rathenafr-health";
+const HEALTHCHECK_DEFAULT_INTERVAL_SECONDS: u64 = 30;
 
 pub async fn run() -> Result<()> {
     init_logging();
@@ -52,6 +54,8 @@ async fn start_bot() -> Result<()> {
 
     let database = connect_database_with_retry(&config.database).await?;
     info!("Connexion à la base de données validée.");
+
+    spawn_healthcheck(database.clone());
 
     let mut client = create_client(config, Arc::new(database)).await?;
     info!("Client Discord créé. Démarrage de la connexion à la passerelle.");
@@ -103,6 +107,55 @@ async fn try_connect_database(config: &DatabaseConfig) -> Result<RAthenaFrDataba
     let database = RAthenaFrDatabase::connect(config).await?;
     database.ping().await?;
     Ok(database)
+}
+
+/// Tâche de fond qui rafraîchit périodiquement un fichier de santé tant que la
+/// base répond. Le `HEALTHCHECK` Docker considère le conteneur sain uniquement
+/// si ce fichier reste récent. Désactivé si `RATHENAFR_HEALTHCHECK_FILE` est vide.
+fn spawn_healthcheck(database: RAthenaFrDatabase) {
+    let Some(path) = healthcheck_file() else {
+        info!("Fichier de santé désactivé (RATHENAFR_HEALTHCHECK_FILE vide).");
+        return;
+    };
+    let interval = Duration::from_secs(
+        env_u64("RATHENAFR_HEALTHCHECK_INTERVAL_SECONDS")
+            .filter(|value| *value > 0)
+            .unwrap_or(HEALTHCHECK_DEFAULT_INTERVAL_SECONDS),
+    );
+
+    tokio::spawn(async move {
+        loop {
+            match database.ping().await {
+                Ok(()) => {
+                    if let Err(error) = write_heartbeat(&path) {
+                        warn!(error = %error, path = %path, "Écriture du fichier de santé impossible.");
+                    }
+                }
+                Err(error) => {
+                    warn!(error = %error, "Ping de santé de la base échoué ; fichier de santé non rafraîchi.");
+                }
+            }
+            tokio::time::sleep(interval).await;
+        }
+    });
+}
+
+fn healthcheck_file() -> Option<String> {
+    match std::env::var("RATHENAFR_HEALTHCHECK_FILE") {
+        Ok(value) => {
+            let trimmed = value.trim();
+            (!trimmed.is_empty()).then(|| trimmed.to_string())
+        }
+        Err(_) => Some(HEALTHCHECK_DEFAULT_FILE.to_string()),
+    }
+}
+
+fn write_heartbeat(path: &str) -> std::io::Result<()> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs())
+        .unwrap_or(0);
+    std::fs::write(path, now.to_string())
 }
 
 fn env_u32(key: &str) -> Option<u32> {

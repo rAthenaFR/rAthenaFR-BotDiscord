@@ -27,4 +27,9 @@ COPY --from=builder /app/target/release/rathenafr-discord-bot /usr/local/bin/rat
 
 USER 10001:10001
 
+# Le binaire rafraîchit /tmp/rathenafr-health tant que la base répond.
+# Le conteneur est marqué "unhealthy" si le fichier devient trop ancien.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD ["/bin/sh", "-c", "test -f /tmp/rathenafr-health && [ $(( $(date +%s) - $(stat -c %Y /tmp/rathenafr-health) )) -lt 90 ]"]
+
 ENTRYPOINT ["/usr/local/bin/rathenafr-discord-bot"]
