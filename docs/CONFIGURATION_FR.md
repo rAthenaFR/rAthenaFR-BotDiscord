@@ -110,7 +110,7 @@ RATHENAFR_MOB_DB_TABLE=mob_db
 RATHENAFR_BATTLE_RATES_CONFIGURED=false
 ```
 
-Les valeurs acceptées sont `item_db`/`item_db_re` et `mob_db`/`mob_db_re`.
+Les valeurs acceptées sont `item_db`/`item_db_re` et `mob_db`/`mob_db_re`. Sur un serveur **renewal**, utilise `item_db_re` et `mob_db_re` ; sur un serveur **pre-renewal**, garde `item_db` et `mob_db`. Le bot s’adapte automatiquement au schéma de colonnes détecté (noms `name_aegis`/`name_english`, colonnes de drop modernes ou héritées), donc seul le choix de la table est à renseigner ici.
 
 Les variables `RATHENAFR_BATTLE_*` reprennent les rates et bornes de drop du `battle_conf`. Laisse `RATHENAFR_BATTLE_RATES_CONFIGURED=false` tant que toutes les valeurs ne correspondent pas au map-server réellement chargé.
 

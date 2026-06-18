@@ -1,5 +1,15 @@
 # Changelog
 
+## Non publié
+
+### Ajouté
+
+- Ajout d’une ligne auteur commune (nom du serveur) sur l’ensemble des embeds via `base_embed` et les embeds spécifiques (mob, MVP, classement, logs staff) pour un rendu moderne et cohérent sur toutes les commandes.
+
+### Corrigé
+
+- Détection du nom aegis des monstres sur le schéma rAthena renewal moderne (`mob_db_re`, sans colonne `sprite`) : ajout de `name_aegis`/`aegis_name` aux candidats de sprite et d’affichage, rendant aussi les monstres cherchables par nom aegis comme les objets.
+
 ## 0.2.4
 
 ### Ajouté

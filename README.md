@@ -10,6 +10,7 @@
 ![CI](https://img.shields.io/github/actions/workflow/status/rAthenaFR/rAthenaFR-BotDiscord/ci.yml?branch=master&label=ci&style=plastic&logo=githubactions&logoColor=white)
 ![Docker build](https://img.shields.io/github/actions/workflow/status/rAthenaFR/rAthenaFR-BotDiscord/docker.yml?branch=master&label=docker%20build&style=plastic&logo=docker&logoColor=white)
 
+![Built with Claude](https://img.shields.io/badge/Built_with-Claude-D97757?style=plastic&logo=anthropic&logoColor=white)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/rAthenaFR/rAthenaFR-BotDiscord)
 
 Bot Discord en Rust pour les communautés Ragnarok Online utilisant une base de données compatible rAthena.
