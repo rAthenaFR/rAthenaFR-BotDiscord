@@ -30,6 +30,7 @@ pub fn mob_drops_embed_l10n(locale: BotLocale, result: &MonsterDrops) -> CreateE
     }
 
     let mut embed = CreateEmbed::new()
+        .author(embed_author())
         .title(t(locale, I18nKey::TitleMobDrops))
         .description(truncate_embed_field(&description, 4096))
         .color(COLOR_INFO)

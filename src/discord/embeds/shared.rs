@@ -38,11 +38,18 @@ pub(super) fn base_embed(
     color: Colour,
 ) -> CreateEmbed {
     CreateEmbed::new()
+        .author(embed_author())
         .title(brand_text(title))
         .description(brand_text(description.into()))
         .color(color)
         .footer(serenity::all::CreateEmbedFooter::new(footer_text()))
         .timestamp(Timestamp::now())
+}
+
+/// Ligne auteur commune à tous les embeds : affiche le nom du serveur en
+/// en-tête pour un rendu cohérent et moderne sur l'ensemble des commandes.
+pub(super) fn embed_author() -> serenity::all::CreateEmbedAuthor {
+    serenity::all::CreateEmbedAuthor::new(display_name())
 }
 
 pub(super) fn display_name() -> String {

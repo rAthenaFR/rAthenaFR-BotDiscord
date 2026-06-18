@@ -42,6 +42,7 @@ pub fn gmmsg_staff_log_embed_l10n(
     };
 
     CreateEmbed::new()
+        .author(embed_author())
         .title(title)
         .description(description)
         .color(color)
@@ -113,6 +114,7 @@ pub fn account_manage_staff_log_embed_l10n(
     };
 
     let mut embed = CreateEmbed::new()
+        .author(embed_author())
         .title(title)
         .color(color)
         .field(

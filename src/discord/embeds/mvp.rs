@@ -39,6 +39,7 @@ pub fn mvp_list_panel_embed_l10n(
     let count_label = total_count.to_string();
 
     CreateEmbed::new()
+        .author(embed_author())
         .title(brand_text(t(locale, I18nKey::EmbedMvpListTitle)))
         .description(brand_text(truncate_embed_field(&description, 3900)))
         .color(COLOR_PURPLE)
@@ -74,6 +75,7 @@ pub fn mvp_last_embed_l10n(
     let displayed_entries = entries.iter().take(display_limit);
     let has_more_entries = entries.len() > display_limit;
     let mut embed = CreateEmbed::new()
+        .author(embed_author())
         .title(t(locale, I18nKey::TitleMvpLastKills))
         .color(COLOR_PURPLE)
         .footer(serenity::all::CreateEmbedFooter::new(t(

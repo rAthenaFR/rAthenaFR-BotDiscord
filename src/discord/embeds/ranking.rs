@@ -111,16 +111,15 @@ pub fn top_zeny_embed_l10n(
         )
     });
 
-    CreateEmbed::new()
-        .title(brand_text(ts(locale, "embed-top-zeny-title")))
-        .description(ts(locale, "embed-top-zeny-description"))
-        .color(COLOR_PURPLE)
-        .footer(serenity::all::CreateEmbedFooter::new(footer_text()))
-        .timestamp(Timestamp::now())
-        .field(
-            ts(locale, "field-summary"),
-            list_summary_l10n(locale, &list, &ts(locale, "noun-ranking-entries")),
-            false,
-        )
-        .field(ts(locale, "field-ranking"), list.value, false)
+    base_embed(
+        &ts(locale, "embed-top-zeny-title"),
+        ts(locale, "embed-top-zeny-description"),
+        COLOR_PURPLE,
+    )
+    .field(
+        ts(locale, "field-summary"),
+        list_summary_l10n(locale, &list, &ts(locale, "noun-ranking-entries")),
+        false,
+    )
+    .field(ts(locale, "field-ranking"), list.value, false)
 }
