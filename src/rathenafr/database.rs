@@ -46,7 +46,7 @@ const ITEM_DISPLAY_COLUMN_CANDIDATES: &[&str] = &[
     "name",
 ];
 const ITEM_TYPE_COLUMN_CANDIDATES: &[&str] = &["type", "item_type"];
-const MONSTER_SPRITE_COLUMN_CANDIDATES: &[&str] = &["sprite"];
+const MONSTER_SPRITE_COLUMN_CANDIDATES: &[&str] = &["sprite", "name_aegis", "aegis_name"];
 const MONSTER_DISPLAY_COLUMN_CANDIDATES: &[&str] = &[
     "iROName",
     "iro_name",
@@ -55,6 +55,8 @@ const MONSTER_DISPLAY_COLUMN_CANDIDATES: &[&str] = &[
     "kROName",
     "kro_name",
     "name_japanese",
+    "name_aegis",
+    "aegis_name",
     "sprite",
 ];
 const MONSTER_LEVEL_COLUMN_CANDIDATES: &[&str] = &["LV", "level", "lv"];

@@ -34,6 +34,34 @@ fn guild_queries_count_online_members_from_joined_char_table() {
 }
 
 #[test]
+fn monster_aegis_name_is_detected_on_modern_renewal_schema() {
+    // mob_db_re moderne (rAthena 2020+) : pas de colonne `sprite`, l'identifiant
+    // aegis est `name_aegis` et l'affichage `name_english`.
+    let columns = AvailableColumns {
+        names: vec![
+            "id".to_string(),
+            "name_aegis".to_string(),
+            "name_english".to_string(),
+            "level".to_string(),
+            "hp".to_string(),
+        ],
+    };
+
+    assert_eq!(
+        columns.first(MONSTER_SPRITE_COLUMN_CANDIDATES).as_deref(),
+        Some("name_aegis")
+    );
+    assert_eq!(
+        columns.first(MONSTER_DISPLAY_COLUMN_CANDIDATES).as_deref(),
+        Some("name_english")
+    );
+    assert!(columns
+        .all(MONSTER_DISPLAY_COLUMN_CANDIDATES)
+        .iter()
+        .any(|name| name == "name_aegis"));
+}
+
+#[test]
 fn mvp_detection_prefers_configured_mvp_exp_columns() {
     let columns = AvailableColumns {
         names: vec![
